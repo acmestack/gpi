@@ -1,0 +1,17 @@
+# Binaries & build artifacts
+/gpi
+/gpilet
+/bin/
+
+# Version control
+.git/
+.gitignore
+
+# Docs & examples not needed in the build context
+docs/
+examples/
+*.md
+
+# Local state
+*.db
+.gpi/

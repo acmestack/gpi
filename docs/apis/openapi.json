@@ -1,0 +1,1154 @@
+{
+  "components": {
+    "schemas": {
+      "Resources": {
+        "description": "Compute requirements used to filter candidate instance types.",
+        "properties": {
+          "accelerators": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "e.g. {\"A100\": 1}",
+            "type": "object"
+          },
+          "cloud": {
+            "type": "string"
+          },
+          "cpus": {
+            "description": "CPU range, e.g. \"8+\", \"4-8\", or a fixed number",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "diskSize": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "instanceType": {
+            "type": "string"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "memory": {
+            "description": "Memory in GiB, e.g. \"16+\"",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "region": {
+            "type": "string"
+          },
+          "timeSec": {
+            "description": "Estimated runtime in seconds (used by the time objective)",
+            "type": "integer"
+          },
+          "useSpot": {
+            "type": "boolean"
+          },
+          "zone": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Task": {
+        "description": "A task to launch: resources to provision plus setup/run commands.",
+        "properties": {
+          "backend": {
+            "description": "Execution backend: cloud|existing|docker|local (default cloud)",
+            "type": "string"
+          },
+          "credentials": {
+            "type": "object"
+          },
+          "docker": {
+            "type": "object"
+          },
+          "envs": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "fileMounts": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "numNodes": {
+            "description": "Number of nodes (default 1)",
+            "type": "integer"
+          },
+          "resources": {
+            "$ref": "#/components/schemas/Resources"
+          },
+          "run": {
+            "description": "Run command on the head node",
+            "type": "string"
+          },
+          "service": {
+            "type": "object"
+          },
+          "setup": {
+            "description": "Setup commands run on every node",
+            "type": "string"
+          },
+          "ssh": {
+            "type": "object"
+          },
+          "tags": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "time": {
+            "type": "string"
+          },
+          "workdir": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "jobRunRequest": {
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "jobSubmitRequest": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "retries": {
+            "type": "integer"
+          },
+          "schedule": {
+            "description": "Cron schedule, e.g. '0 0 * * *'",
+            "type": "string"
+          },
+          "task": {
+            "description": "Task YAML or task file path",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "launchRequest": {
+        "properties": {
+          "cloud": {
+            "description": "Cloud filter",
+            "type": "string"
+          },
+          "clusterName": {
+            "type": "string"
+          },
+          "dryRun": {
+            "description": "Only compute the placement plan",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Cluster name (defaults to task name)",
+            "type": "string"
+          },
+          "numNodes": {
+            "type": "integer"
+          },
+          "optimizer": {
+            "description": "Placement optimizer or strategy: cost, time, or a priority list like cost,time (default: cost)",
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "runTask": {
+            "description": "Start running the task after provisioning",
+            "type": "boolean"
+          },
+          "task": {
+            "description": "Task YAML",
+            "type": "string"
+          },
+          "useSpot": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "serviceUpRequest": {
+        "properties": {
+          "cloud": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "optimizer": {
+            "description": "Placement optimizer or strategy (default: cost)",
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "task": {
+            "description": "Task YAML with a service block",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "taskLaunchRequest": {
+        "properties": {
+          "cloud": {
+            "type": "string"
+          },
+          "dryRun": {
+            "description": "Only compute the placement plan",
+            "type": "boolean"
+          },
+          "numNodes": {
+            "type": "integer"
+          },
+          "optimizer": {
+            "description": "Placement optimizer or strategy (default: cost)",
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "runTask": {
+            "description": "Start running the task after provisioning",
+            "type": "boolean"
+          },
+          "task": {
+            "$ref": "#/components/schemas/Task",
+            "description": "Task object (structured JSON)"
+          },
+          "useSpot": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "task"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "bearerFormat": "token",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "gpi multi-cloud compute scheduling REST API. Authenticate with `Authorization: Bearer \u003ctoken\u003e` when the server runs with --require-auth.",
+    "title": "gpi API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/api/v1/gpi/clusters": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List clusters",
+        "tags": [
+          "clusters"
+        ]
+      }
+    },
+    "/api/v1/gpi/clusters/{name}": {
+      "delete": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Terminate a cluster",
+        "tags": [
+          "clusters"
+        ]
+      },
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a cluster",
+        "tags": [
+          "clusters"
+        ]
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "name",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/v1/gpi/clusters/{name}/launch": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "name",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/launchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Launch a task given as YAML string",
+        "tags": [
+          "clusters"
+        ]
+      }
+    },
+    "/api/v1/gpi/config": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List config entries",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/api/v1/gpi/config/{key}": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a config value",
+        "tags": [
+          "config"
+        ]
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "key",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "put": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Set a config value",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/api/v1/gpi/jobs": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List jobs",
+        "tags": [
+          "jobs"
+        ]
+      },
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/jobSubmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Submit a job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/gpi/jobs/{name}/run": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "name",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/jobRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Run a job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/gpi/services": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List services",
+        "tags": [
+          "services"
+        ]
+      }
+    },
+    "/api/v1/gpi/services/up": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/serviceUpRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Deploy a service",
+        "tags": [
+          "services"
+        ]
+      }
+    },
+    "/api/v1/gpi/services/{name}": {
+      "delete": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Tear down a service",
+        "tags": [
+          "services"
+        ]
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "name",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/v1/gpi/tasks/{name}/launch": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "name",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/taskLaunchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Launch a task given as a structured Task object",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/v1/gpi/tokens": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List tokens",
+        "tags": [
+          "tokens"
+        ]
+      },
+      "post": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create a token",
+        "tags": [
+          "tokens"
+        ]
+      }
+    },
+    "/api/v1/gpi/tokens/{id}": {
+      "delete": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Revoke a token",
+        "tags": [
+          "tokens"
+        ]
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/v1/gpi/tokens/{id}/rotate": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Rotate a token",
+        "tags": [
+          "tokens"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "description": "Cluster lifecycle",
+      "name": "clusters"
+    },
+    {
+      "description": "Task submission (structured JSON body)",
+      "name": "tasks"
+    },
+    {
+      "description": "Replicated services",
+      "name": "services"
+    },
+    {
+      "description": "Scheduled jobs",
+      "name": "jobs"
+    },
+    {
+      "description": "Runtime configuration",
+      "name": "config"
+    },
+    {
+      "description": "Service-account tokens",
+      "name": "tokens"
+    }
+  ]
+}

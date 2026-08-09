@@ -1,0 +1,16 @@
+name: existing-cluster-task
+
+# Attach to an already-running host; gpi only orchestrates setup/run over SSH.
+backend: existing
+
+ssh:
+  host: 1.2.3.4
+  user: root
+  key: ~/.ssh/id_rsa
+  port: 22
+
+setup: |
+  pip install -r requirements.txt
+
+run: |
+  python train.py --local

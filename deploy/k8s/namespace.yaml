@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpi
+  labels:
+    app.kubernetes.io/name: gpi
+    app.kubernetes.io/part-of: gpi

@@ -1,0 +1,444 @@
+package aws
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/acmestack/gpi/internal/cloud"
+)
+
+// Provider implements cloud.Provider for AWS EC2. It may be bound to explicit
+// credentials via NewProvider; otherwise it loads env/disk creds.
+type Provider struct {
+	creds *Credentials
+}
+
+// NewProvider returns a provider bound to the given credentials (nil means
+// use the default env/disk loading).
+func NewProvider(creds *Credentials) Provider {
+	return Provider{creds: creds}
+}
+
+func (Provider) Name() string { return "aws" }
+
+func (p Provider) client() (*Client, error) {
+	if p.creds != nil {
+		return NewClientWithCreds(p.creds.Region, *p.creds)
+	}
+	return NewClient("")
+}
+
+func (p Provider) Regions(ctx context.Context) ([]string, error) {
+	client, err := p.client()
+	if err != nil {
+		return nil, err
+	}
+	return client.DescribeRegions(ctx)
+}
+
+func (p Provider) RunInstances(ctx context.Context, spec *cloud.LaunchSpec) ([]*cloud.Instance, error) {
+	client, err := p.client()
+	if err != nil {
+		return nil, err
+	}
+	if spec.Region == "" {
+		spec.Region = client.region
+	}
+	if spec.ImageID == "" {
+		imageID, err := client.GetImage(ctx, "ubuntu")
+		if err != nil {
+			return nil, err
+		}
+		spec.ImageID = imageID
+	}
+	if spec.SecurityGroupID == "" {
+		vpcID, err := p.vpcFor(ctx, client, spec.Region, spec.VPCID)
+		if err != nil {
+			return nil, err
+		}
+		spec.VPCID = vpcID
+		groupID, err := client.CreateSecurityGroup(ctx, "gpi-sg", "gpi managed security group", vpcID)
+		if err != nil {
+			return nil, err
+		}
+		for _, rule := range []struct{ from, to int }{
+			{22, 22},
+			{1024, 65535},
+		} {
+			if err := client.AuthorizeSecurityGroup(ctx, groupID, rule.from, rule.to, "tcp"); err != nil {
+				return nil, err
+			}
+		}
+		spec.SecurityGroupID = groupID
+	}
+
+	// Collect candidate subnets (default VPC's existing ones, else create a
+	// fresh network). Try each in turn; some AZs may lack capacity.
+	subnets, err := p.subnetsFor(ctx, client, spec.Region, spec.VPCID, spec.Zone)
+	if err != nil {
+		return nil, err
+	}
+	var lastErr error
+	for i, subnet := range subnets {
+		launchSpec := *spec
+		launchSpec.VSwitchID = subnet.SubnetId
+		launchSpec.Zone = subnet.AvailabilityZone
+		ids, err := client.RunInstances(ctx, &launchSpec)
+		if err == nil {
+			instances := make([]*cloud.Instance, 0, len(ids))
+			for _, id := range ids {
+				instances = append(instances, &cloud.Instance{
+					ID:           id,
+					Name:         spec.NamePrefix,
+					InstanceType: spec.InstanceType,
+					Region:       spec.Region,
+					Zone:         launchSpec.Zone,
+					Status:       cloud.StatusPending,
+				})
+			}
+			return instances, nil
+		}
+		lastErr = err
+		if awsRetryable(err) && i < len(subnets)-1 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(2 * time.Second):
+			}
+			continue
+		}
+		return nil, err
+	}
+	return nil, lastErr
+}
+
+func awsRetryable(err error) bool {
+	msg := err.Error()
+	for _, sub := range []string{
+		"InsufficientInstanceCapacity", "InsufficientCapacity", "InstanceLimitExceeded",
+		"Unsupported", "InvalidParameterValue", "IncorrectVpcState", "PendingVerification",
+	} {
+		if strings.Contains(msg, sub) {
+			return true
+		}
+	}
+	return false
+}
+
+// vpcFor returns the VPC to use: the caller-specified one, or the account's
+// default VPC, creating a fresh VPC only when none exists.
+func (p Provider) vpcFor(ctx context.Context, client *Client, region, vpcID string) (string, error) {
+	if vpcID != "" {
+		return vpcID, nil
+	}
+	vpcs, err := client.DescribeVpcs(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, vpc := range vpcs {
+		if vpc.IsDefault {
+			return vpc.VpcId, nil
+		}
+	}
+	subnets, err := p.createVpcNetwork(ctx, client, region, "")
+	if err != nil {
+		return "", err
+	}
+	return subnets[0].VpcId, nil
+}
+
+// subnetsFor returns candidate subnets: the default VPC's existing subnets
+// (preferring the requested zone), or a freshly created network when none.
+func (p Provider) subnetsFor(ctx context.Context, client *Client, region, vpcID, zone string) ([]subnetItem, error) {
+	if vpcID == "" {
+		vpcs, err := client.DescribeVpcs(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, vpc := range vpcs {
+			if vpc.IsDefault {
+				vpcID = vpc.VpcId
+				break
+			}
+		}
+	}
+	if vpcID != "" {
+		subnets, err := client.DescribeSubnets(ctx, vpcID)
+		if err != nil {
+			return nil, err
+		}
+		if len(subnets) > 0 {
+			// Prefer the requested zone, then return all as fallbacks.
+			if zone != "" {
+				var zoned []subnetItem
+				for _, s := range subnets {
+					if s.AvailabilityZone == zone {
+						zoned = append(zoned, s)
+					}
+				}
+				if len(zoned) > 0 {
+					return zoned, nil
+				}
+			}
+			return subnets, nil
+		}
+	}
+	return p.createVpcNetwork(ctx, client, region, zone)
+}
+
+// createVpcNetwork creates a VPC + IGW + route table + subnet and returns the
+// subnet(s) as a single candidate.
+func (p Provider) createVpcNetwork(ctx context.Context, client *Client, region, zone string) ([]subnetItem, error) {
+	vpcID, err := client.CreateVpc(ctx, "10.0.0.0/16", "gpi-vpc")
+	if err != nil {
+		return nil, err
+	}
+	igwID, err := client.CreateInternetGateway(ctx, "gpi-igw")
+	if err != nil {
+		return nil, err
+	}
+	if err := client.AttachInternetGateway(ctx, igwID, vpcID); err != nil {
+		return nil, err
+	}
+	routeTableID, err := client.CreateRouteTable(ctx, vpcID)
+	if err != nil {
+		return nil, err
+	}
+	if err := client.CreateRoute(ctx, routeTableID, igwID); err != nil {
+		return nil, err
+	}
+	if zone == "" {
+		zones, err := client.DescribeZones(ctx, region)
+		if err != nil {
+			return nil, err
+		}
+		if len(zones) == 0 {
+			return nil, fmt.Errorf("no zones available in %s", region)
+		}
+		zone = zones[len(zones)/2]
+	}
+	subnetID, err := client.CreateSubnet(ctx, vpcID, zone, "10.0.1.0/24")
+	if err != nil {
+		return nil, err
+	}
+	if err := client.AssociateRouteTable(ctx, routeTableID, subnetID); err != nil {
+		return nil, err
+	}
+	return []subnetItem{{SubnetId: subnetID, AvailabilityZone: zone, VpcId: vpcID}}, nil
+}
+
+func (p Provider) ListInstances(ctx context.Context, region string, namePrefix string) ([]*cloud.Instance, error) {
+	client, err := p.client()
+	if err != nil {
+		return nil, err
+	}
+	if region != "" {
+		client.region = region
+	}
+	instances, err := client.DescribeInstances(ctx, nil, namePrefix)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*cloud.Instance, 0, len(instances))
+	for i := range instances {
+		out = append(out, &instances[i])
+	}
+	return out, nil
+}
+
+func (p Provider) DescribeInstances(ctx context.Context, region string, ids []string) ([]*cloud.Instance, error) {
+	client, err := p.client()
+	if err != nil {
+		return nil, err
+	}
+	if region != "" {
+		client.region = region
+	}
+	instances, err := client.DescribeInstances(ctx, ids, "")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*cloud.Instance, 0, len(instances))
+	for i := range instances {
+		out = append(out, &instances[i])
+	}
+	return out, nil
+}
+
+func (p Provider) StopInstances(ctx context.Context, region string, ids []string) error {
+	client, err := p.client()
+	if err != nil {
+		return err
+	}
+	if region != "" {
+		client.region = region
+	}
+	for _, id := range ids {
+		if err := client.StopInstance(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p Provider) StartInstances(ctx context.Context, region string, ids []string) error {
+	client, err := p.client()
+	if err != nil {
+		return err
+	}
+	if region != "" {
+		client.region = region
+	}
+	for _, id := range ids {
+		if err := client.StartInstance(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p Provider) TerminateInstances(ctx context.Context, region string, ids []string) error {
+	client, err := p.client()
+	if err != nil {
+		return err
+	}
+	if region != "" {
+		client.region = region
+	}
+	for _, id := range ids {
+		if err := client.TerminateInstance(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p Provider) GetPublicIP(ctx context.Context, region, id string) (string, error) {
+	client, err := p.client()
+	if err != nil {
+		return "", err
+	}
+	if region != "" {
+		client.region = region
+	}
+	instances, err := client.DescribeInstances(ctx, []string{id}, "")
+	if err != nil {
+		return "", err
+	}
+	if len(instances) == 0 {
+		return "", fmt.Errorf("instance %s not found", id)
+	}
+	return instances[0].PublicIP, nil
+}
+
+func (p Provider) DescribeZones(ctx context.Context, region string) ([]string, error) {
+	client, err := p.client()
+	if err != nil {
+		return nil, err
+	}
+	if region != "" {
+		client.region = region
+	}
+	return client.DescribeZones(ctx, region)
+}
+
+func (p Provider) CreateKeyPair(ctx context.Context, region, name string) (string, error) {
+	client, err := p.client()
+	if err != nil {
+		return "", err
+	}
+	if region != "" {
+		client.region = region
+	}
+	return client.CreateKeyPair(ctx, name)
+}
+
+func (p Provider) DeleteKeyPair(ctx context.Context, region, name string) error {
+	client, err := p.client()
+	if err != nil {
+		return err
+	}
+	if region != "" {
+		client.region = region
+	}
+	return client.DeleteKeyPair(ctx, name)
+}
+
+func (p Provider) CreateSecurityGroup(ctx context.Context, region, vpcID, name, desc string) (string, error) {
+	client, err := p.client()
+	if err != nil {
+		return "", err
+	}
+	if region != "" {
+		client.region = region
+	}
+	return client.CreateSecurityGroup(ctx, name, desc, vpcID)
+}
+
+func (p Provider) AuthorizeSecurityGroup(ctx context.Context, region, groupID string, portFrom, portTo int, protocol string) error {
+	client, err := p.client()
+	if err != nil {
+		return err
+	}
+	if region != "" {
+		client.region = region
+	}
+	return client.AuthorizeSecurityGroup(ctx, groupID, portFrom, portTo, protocol)
+}
+
+func (p Provider) CreateVPC(ctx context.Context, region, cidr, name string) (string, error) {
+	client, err := p.client()
+	if err != nil {
+		return "", err
+	}
+	if region != "" {
+		client.region = region
+	}
+	return client.CreateVpc(ctx, cidr, name)
+}
+
+func (p Provider) CreateVSwitch(ctx context.Context, region, vpcID, zone, cidr, name string) (string, error) {
+	client, err := p.client()
+	if err != nil {
+		return "", err
+	}
+	if region != "" {
+		client.region = region
+	}
+	return client.CreateSubnet(ctx, vpcID, zone, cidr)
+}
+
+func (p Provider) ListVSwitches(ctx context.Context, region, vpcID string) ([]cloud.VSwitch, error) {
+	client, err := p.client()
+	if err != nil {
+		return nil, err
+	}
+	if region != "" {
+		client.region = region
+	}
+	return client.ListVSwitches(ctx, vpcID)
+}
+
+func (p Provider) GetImage(ctx context.Context, region, platform string) (string, error) {
+	client, err := p.client()
+	if err != nil {
+		return "", err
+	}
+	if region != "" {
+		client.region = region
+	}
+	return client.GetImage(ctx, platform)
+}
+
+func init() {
+	cloud.Register(Provider{})
+	cloud.RegisterFactory("aws", func(creds *cloud.Credentials) (cloud.Provider, error) {
+		return NewProvider(&Credentials{
+			AccessKeyID:     creds.AccessKeyID,
+			SecretAccessKey: creds.SecretAccessKey,
+			Region:          creds.Region,
+		}), nil
+	})
+}

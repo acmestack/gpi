@@ -1,0 +1,14 @@
+name: aws-train
+num_nodes: 1
+
+resources:
+  cloud: aws
+  accelerators: A100:8
+  cpus: 96
+  memory: 1000+
+
+setup: |
+  pip install -r requirements.txt
+
+run: |
+  python train.py --epochs 100

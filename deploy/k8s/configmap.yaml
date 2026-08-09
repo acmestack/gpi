@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpi-config
+  namespace: gpi
+  labels:
+    app.kubernetes.io/name: gpi
+    app.kubernetes.io/part-of: gpi
+data:
+  # State backend: use redis for a shared, multi-replica state store.
+  # Alternatively use sqlite + a PVC (see deployment.yaml comments).
+  GPI_STATE_BACKEND: "redis"
+  GPI_STATE_REDIS_ADDR: "gpi-redis:6379"
+  # REST API options
+  GPI_API_PREFIX: "/api/v1/gpi"
+  # Response key style: camel | snake | pascal
+  GPI_API_RESPONSE_KEY_STYLE: "camel"
+  # Log level / request id header are optional; uncomment as needed.
+  # GPI_REQUEST_ID_HEADER: "x-request-id"

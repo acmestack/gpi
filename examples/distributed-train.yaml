@@ -1,0 +1,20 @@
+name: distributed-train
+num_nodes: 2
+
+resources:
+  accelerators: A100:1
+  cpus: 8+
+  memory: 32+
+  labels:
+    role: training
+    tier: prod
+
+tags:
+  owner: ml-team
+  project: llm-finetune
+
+setup: |
+  pip install -r requirements.txt
+
+run: |
+  python train.py --num_workers {{cluster.num_workers}} --master_addr {{cluster.head_ip}}

@@ -1,0 +1,53 @@
+# Optional: a single-node Redis used as the gpi state backend when
+# GPI_STATE_BACKEND=redis. For production, prefer a managed Redis or a
+# Redis StatefulSet with persistence.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpi-redis
+  namespace: gpi
+  labels:
+    app.kubernetes.io/name: gpi-redis
+    app.kubernetes.io/part-of: gpi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gpi-redis
+  template:
+    metadata:
+      labels:
+        app: gpi-redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - name: redis
+              containerPort: 6379
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: "1"
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gpi-redis
+  namespace: gpi
+  labels:
+    app.kubernetes.io/name: gpi-redis
+    app.kubernetes.io/part-of: gpi
+spec:
+  selector:
+    app: gpi-redis
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+      protocol: TCP

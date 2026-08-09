@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: make build
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpi-binaries
+          path: |
+            gpi
+            gpilet
+          if-no-files-found: error
+
+  docker-build:
+    name: Docker image build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: gpi:ci
+
+  cross-build:
+    name: Cross-compile (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - {os: linux, arch: amd64}
+          - {os: linux, arch: arm64}
+          - {os: darwin, arch: amd64}
+          - {os: darwin, arch: arm64}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build gpi
+        run: |
+          GOOS=${{ matrix.target.os }} GOARCH=${{ matrix.target.arch }} \
+            CGO_ENABLED=0 go build -o gpi-${{ matrix.target.os }}-${{ matrix.target.arch }} ./cmd/gpi
+
+      - name: Build gpilet
+        run: |
+          GOOS=${{ matrix.target.os }} GOARCH=${{ matrix.target.arch }} \
+            CGO_ENABLED=0 go build -o gpilet-${{ matrix.target.os }}-${{ matrix.target.arch }} ./cmd/gpilet
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpi-${{ matrix.target.os }}-${{ matrix.target.arch }}
+          path: |
+            gpi-*
+            gpilet-*
+          if-no-files-found: error
