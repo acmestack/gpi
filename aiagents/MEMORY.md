@@ -1,0 +1,132 @@
+# Gpi 项目沟通记录（MEMORY）
+
+- **文档版本**：v2（2026-08-09）
+- 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
+- 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v2（2026-08-09）**：按 AGENTS.md 新规则建立"每次沟通后追加记录"；补齐 K8s 部署 / OpenAPI 在线预览 / License/CLA / PR 模板等近期决策；修正头部日期。
+- **v1（2026-08-09）**：创建本文件，汇总从立项起的沟通历史与关键决策。
+
+## 沟通记录
+
+### 2026-08-08（立项 · v1 骨架）
+
+- 确定项目：参考 SkyPilot 模式，用 Go 重写实现多云算力调度，对标 SkyPilot 的 launcher / optimizer / SkyServe / Sky Jobs / API server。
+- 确定位置 `opencode/gpi`（后更名），module `github.com/acmestack/gpi`，CLI 名 `gpi`，首个云 aliyun，CLI+Server 双形态。
+- 完成 v1 全部功能骨架并通过测试。
+- 全项目更名 `cloudpilot → cspilot`、`cpctl → csp`（后再次更名 gpi）。
+
+### 2026-08-08（AWS Provider · Ray 集群）
+
+- 实现 AWS Provider（`internal/cloud/aws` + `internal/catalog/aws*`）：零 SDK 依赖、SigV4 签名、EC2 全生命周期、默认 VPC/新建 VPC+IGW+Route、SG、KeyPair、Ubuntu AMI 自动选择。
+- catalog 覆盖 13 region × (t3/m5/m6i/c5 + g4dn/g5/p3/p4d)。
+- optimizer 默认改为遍历全部已注册云做跨云比价。
+- 补齐 Ray 集群架构：`num_nodes>1` 时 head/worker 角色，launch 后自动 bootstrap Ray。
+- 支持自定义 tags 与 labels、每次任务动态 AK/SK（`credentials:`）、tags/labels 合并。
+
+### 2026-08-08（gpilet · 持久化 · 后端抽象）
+
+- 新增 gpilet 节点 agent（对标 skylet）：`gpilet serve` 常驻采集 CPU/内存/磁盘/GPU/Ray 状态。
+- 持久化可插拔：`state.Backend`，file（默认）/sqlite/mysql。
+- 新增执行后端抽象（对标 SkyPilot backend 层）：cloud/existing/docker/local。
+- API 响应结构可定制（ResponseEncoder raw/envelope）、Request ID、响应 key 风格（camel/snake/pascal）。
+
+### 2026-08-08（平台 · 表结构 · 认证 · Middleware · 更名 gpi）
+
+- 明确平台支持 Linux/macOS，移除 Windows。
+- SQL 后端按实体拆表（clusters/services/jobs），支持旧 `gpi_state` 单表迁移。
+- 补齐集群快照/历史/事件（cluster_yaml/history/events）。
+- 补齐 config 表与 service_account_tokens（--require-auth Bearer 认证）。
+- Middleware 抽象 + OpenAPI/Swagger（--docs）。
+- 全项目去重名 `gpilot → gpi`：module、文档、标题/描述/日志/DB/云资源名统一。
+
+### 2026-08-08（Catalog 静态+实时 · 注册收敛 · 聚合包）
+
+- Catalog 改为规格静态 + 价格实时：新增 `internal/pricing`（TTL 缓存 + 惰性实时拉取）。
+- 云注册收敛为单一入口（`cloud.Register`/`RegisterFactory`/`pricing.Register`/`catalog.Register`）。
+- 新增聚合包 `internal/cloud/imports`，所有云空白导入集中一处。
+- 聚合包改为自动生成（`gen.go`，`go generate ./internal/cloud/imports`），挂 `make build` 前置。
+
+### 2026-08-09（Catalog 全面元数据化 · Optimizer 可插拔）
+
+- **关键决策**：Catalog 全面元数据化，删除全部静态 `xx_data.go`。规格与价格都是"定时读取的元数据"。
+- 每云实现 `catalog.Source`（`SpecsTTL`/`PriceTTL` 按云自定义），`catalog.Cache` TTL 缓存（规格 24h、价格 10min，stale-while-error）。
+- `internal/pricing` 包移除，价格并入 catalog；aliyun/aws 新增 `metadata.go`（`DescribeInstanceTypes`/`DescribeInstanceTypeOfferings` 全量规格）。
+- Optimizer 可插拔化：`optimizer.Optimizer` 接口 + 注册表 + `--optimizer` 标志。
+- 价格拉取预算化：候选截断 `maxPricedCandidates=200` + 并发 `priceWorkers=8`。
+- 无价候选排有价之后；修复分页签名残留（`call` 内清理 `Signature`）。
+- 真机问题：1956 个机型逐个拉价超时 → 并发+截断；修复并行数组排序 bug。
+
+### 2026-08-09（新云接入单 struct · Redis 后端 · Dockerfile）
+
+- **决策**：新云接入只需一个 struct——`Provider` 同时实现 `cloud.Provider` + `catalog.Source`，`cloud.Register` 类型断言自动注册元数据源。
+- 新增 Redis 状态后端（`GPI_STATE_BACKEND=redis`，go-redis/v9，miniredis 测试）。
+- 新增 `Dockerfile`（多阶段构建 gpi+gpilet）+ `.dockerignore` + `make docker`。
+
+### 2026-08-09（元数据包拆分演进：catalog↔metacache）
+
+- 三次重构：①`internal/catalog` 删除，契约并入 `internal/cloud`，Cache 独立 `internal/metacache`；②catalog 包保留并下沉 `internal/cloud/catalog`（撤销 metacache 拆分）；③最终定稿：`internal/cloud/catalog` 只留契约（Source 接口 + Instance/Price + 注册表，对应 `sky/catalogs`），TTL Cache 运行时独立 `internal/metacache`。
+- 依赖单向：`cloud ← cloud/catalog ← metacache ← optimizer`。
+- 规格类型最终为 `catalog.Instance`。
+
+### 2026-08-09（注释补齐 · time 优化器 · 策略优化器）
+
+- 删除死代码 `matchInstances`；全仓库补齐导出符号注释。
+- 新增 `time` 优化器（参考 SkyPilot `OptimizeTarget.TIME`）：按预估运行时长升序，`resources.time_sec` 或算力启发式（`est = 4h/(vcpus+GPU×16)`）。
+- **决策**：Optimizer 支持两种选择模式——指定优化器（`cost`/`time`）与指定优化策略（`--optimizer cost,time` 字典序多目标）。
+
+### 2026-08-09（优化器扩展 API 开放）
+
+- `Optimizer`/`Objective`/`Candidate`/`RegisterObjective`/`ParseStrategy`/`NewStrategy` 全部导出；外部包测试 `optimizer_ext_test.go` 即扩展示例。
+- `Request.Meta` 移除；`DefaultMeta` 降为未导出 `defaultMeta`，`SetDefaultMeta` 测试注入，`PricesForced` 便捷导出。
+- 文件按职责拆分：`candidate.go`（管道）、`objective.go`（接口）、`strategy.go`（排序）、`cost.go`（cost 目标+`OptimizeByCost`）、`time.go`（time 目标+`OptimizeByTime`）。
+- `Objective.Rank` 更名（原 `Score`）；`NewStrategy`/`ParseStrategy` 移到 strategy.go。
+- 新增 `docs/gpi-optimizer-extension.md` 完整扩展指南。
+
+### 2026-08-09（Swagger/CI/文档规则）
+
+- `strategy.go` 的 `init` 移到文件末尾。
+- CI/Release workflow 增加 Docker 构建（CI 构建验证，Release 推送 GHCR）。
+- **决策**：文档版本号规则从各文档内移到项目根 `AGENTS.md`；docs 长期文档版本号记录在内容中。
+- Swagger 补齐请求体 schema（含 `optimizer` 字段）；修复 KeyStyle 下 `$ref` 断裂（`convertKeys` 同步转换 schema 名）。
+
+### 2026-08-09（REST API 前缀 · Task 结构体接口）
+
+- **决策**：API 前缀可自定义，默认 `/api/v1/gpi`（`GPI_API_PREFIX` 或 `--api-prefix`），swagger 显示完整 path。
+- **决策**：task 两种输入方式且 path 有区分——`clusters/{name}/launch`（YAML 字符串）+ `tasks/{name}/launch`（Task 结构体 JSON）。
+- 给 task 结构补 JSON tags、`Range.UnmarshalJSON`（支持 `"cpus":"8+"`）；抽取共享 `launchTask` 管道。
+- 修复 Swagger UI 下 POST 无请求体：OpenAPI 文档豁免 KeyStyle（`writeRawJSON`），schema 属性名统一 camelCase。
+
+### 2026-08-09（Swagger Task schema · 文档版本格式 · 收尾）
+
+- swagger 的 `taskLaunchRequest.task` 引用完整 `Task`/`Resources` schema。
+- **决策**：docs/*.md 统一版本格式——顶部版本号 + 下方每次变更的版本记录（对齐 gpi-optimizer-extension.md）。architecture 版本记录移到顶部（v43→v1 降序），new-cloud 补齐变更记录。
+- 排查并修正文档/代码不一致：`/api/v1/tokens` → `/api/v1/gpi/tokens`、README 存储后端列表补 redis。
+- **待办**：创建 `aiagents/MEMORY.md`；LICENSE 用 MIT；项目 CLA（参考 acmestack）加入 `.github`。
+
+### 2026-08-09（K8s 部署 · OpenAPI 在线预览 · CLA · 收尾）
+
+- **决策**：新增 `deploy/k8s/` 部署资源（namespace/configmap/deployment/service/redis/pvc/kustomization），`kubectl apply -k deploy/k8s` 一键部署。
+- **决策**：OpenAPI 规范以 `docs/apis/openapi.json` 提交（`cmd/gen-openapi` + `make openapi` 生成），K8s Deployment 默认不开启 `--docs`。
+- **决策**：GitLab 内建 OpenAPI 预览，GitHub 不渲染 → 用 **GitHub Pages + Swagger UI** 提供交互式预览，访问 `https://acmestack.github.io/gpi/apis`（`docs/apis/index.html` + `swagger-initializer.js` + `.github/workflows/pages.yml`）。
+- **决策**：LICENSE 用 MIT（© ACMEStack）；项目 CLA 参考 AcmeStack（`acmestack/.github` 的 AcmeStack-CLA.md 中英全文）→ `.github/CLA.md` + `cla-assistant.json`；新增 PR 模板（`.github/PULL_REQUEST_TEMPLATE.md`，中英双语）。
+- README 新增"部署到 Kubernetes"与 Overview 内可扩展入口链接。
+- **决策**：AGENTS.md 新增"沟通记录（MEMORY）"规则——每次沟通结束都追加到 `aiagents/MEMORY.md`。
+
+## 关键设计决策速查
+
+| 决策 | 结论 |
+|------|------|
+| 元数据来源 | 全动态，无静态数据；规格/价格按 TTL 缓存，每云可自定义 |
+| 元数据包结构 | 契约 `internal/cloud/catalog`（对应 sky/catalogs）+ Cache `internal/metacache` |
+| 新云接入 | 一个包 + 一个 struct（Provider 同时实现 Provider+Source） |
+| Optimizer | 可插拔；两种模式：指定优化器（cost/time）或策略（cost,time 字典序） |
+| 扩展优化器 | 实现 `Objective` + `RegisterObjective`/`NewStrategy` |
+| 元数据访问 | 全局 `defaultMeta`（`SetDefaultMeta` 注入） |
+| REST 前缀 | `/api/v1/gpi` 可自定义（`GPI_API_PREFIX`/`--api-prefix`） |
+| task 输入 | `clusters/{name}/launch`=YAML 字符串；`tasks/{name}/launch`=Task JSON |
+| 文档版本 | 版本号记录在 docs 内容中；变更记录放顶部版本号下方 |
+| K8s 部署 | `deploy/k8s/`，`kubectl apply -k deploy/k8s`；默认 redis 后端 |
+| OpenAPI 在线预览 | `docs/apis/openapi.json` + GitHub Pages Swagger UI → `https://acmestack.github.io/gpi/apis` |
+| License / CLA | MIT；AcmeStack CLA（`.github/CLA.md` + cla-assistant） |
+| 沟通记录 | 每次沟通后追加到 `aiagents/MEMORY.md` |
+| 平台 | Linux/macOS；无 Windows |

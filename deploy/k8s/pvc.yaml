@@ -1,0 +1,18 @@
+# Optional: persistent volume for the sqlite state backend. Create a StorageClass
+# that matches your cluster (default here is "standard"). Uncomment in
+# deployment.yaml to use sqlite with durable state.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gpi-data
+  namespace: gpi
+  labels:
+    app.kubernetes.io/name: gpi
+    app.kubernetes.io/part-of: gpi
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  # storageClassName: standard

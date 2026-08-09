@@ -1,0 +1,12 @@
+name: nightly-benchmark
+num_nodes: 1
+
+resources:
+  cpus: 4
+  memory: 16
+
+setup: |
+  echo "setting up benchmark env"
+
+run: |
+  echo "running nightly benchmark"

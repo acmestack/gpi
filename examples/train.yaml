@@ -1,0 +1,14 @@
+name: train
+num_nodes: 1
+
+resources:
+  accelerators: A100:1
+  cpus: 8+
+  memory: 32+
+  disk_size: 100
+
+setup: |
+  pip install -r requirements.txt
+
+run: |
+  python train.py --epochs 100

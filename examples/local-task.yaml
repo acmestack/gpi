@@ -1,0 +1,10 @@
+name: local-task
+
+# Run directly on the local machine (no provisioning).
+backend: local
+
+setup: |
+  python3 -c "print('local setup ok')"
+
+run: |
+  python3 -c "print('hello from local backend')"

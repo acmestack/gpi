@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpi
+  namespace: gpi
+  labels:
+    app.kubernetes.io/name: gpi
+    app.kubernetes.io/part-of: gpi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gpi
+  template:
+    metadata:
+      labels:
+        app: gpi
+    spec:
+      containers:
+        - name: gpi
+          image: ghcr.io/acmestack/gpi:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - server
+            - start
+            - --port
+            - "8080"
+            # Swagger UI (/docs) is served from the repository's docs/openapi.json
+            # instead of the running server; add --docs here only if you want the
+            # live spec endpoint on the deployment.
+            # - --docs
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: gpi-config
+          # Optional: service-account token for authenticating cross-cluster
+          # calls; create one via `gpi server token create` and inject via a
+          # Secret, then enable --require-auth.
+          # - secretRef:
+          #     name: gpi-secrets
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      # When using the sqlite backend (instead of redis), uncomment a
+      # PersistentVolumeClaim and mount GPI_HOME so state survives restarts:
+      #
+      # env:
+      #   - name: GPI_HOME
+      #     value: /data
+      #   - name: GPI_STATE_BACKEND
+      #     value: sqlite
+      #   - name: GPI_STATE_SQLITE
+      #     value: /data/gpi.db
+      # volumeMounts:
+      #   - name: gpi-data
+      #     mountPath: /data
+      # volumes:
+      #   - name: gpi-data
+      #     persistentVolumeClaim:
+      #       claimName: gpi-data
