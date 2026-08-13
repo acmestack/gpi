@@ -1,0 +1,25 @@
+{
+    "LICENSE": [
+        "MIT License",
+        "Copyright (c) 2026 ACMEStack"
+    ],
+    "ignore": [
+        "**/*.go",
+        "**/*.md",
+        "**/*.json",
+        "**/*.yaml",
+        "**/*.yml",
+        "**/*.sh",
+        "**/*.svg",
+        "**/*.sum",
+        "**/*.mod",
+        "**/*.pem",
+        "**/*.py",
+        "**/Dockerfile",
+        "**/.dockerignore",
+        "**/.gitignore",
+        "**/.licenserc.json",
+        "**/Makefile",
+        "**/AGENTS.md"
+    ]
+}
