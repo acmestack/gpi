@@ -1,8 +1,9 @@
 # Gpi 项目沟通记录（MEMORY）
 
-- **文档版本**：v9（2026-08-13）
+- **文档版本**：v10（2026-08-13）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v10（2026-08-13）**：补录 docs 版本记录移到文档末尾。
 - **v9（2026-08-13）**：补录 lexicographicOptimizer 独立成 lexicographic.go。
 - **v8（2026-08-13）**：补录 Objective→Metric、strategyOptimizer→lexicographicOptimizer 改名。
 - **v7（2026-08-13）**：补录扩展指南"打分后分数如何使用"小节。
@@ -154,6 +155,10 @@
 ### 2026-08-13（lexicographicOptimizer 独立成 lexicographic.go）
 
 - **决策**：`lexicographicOptimizer`（算法实现：Name/Optimize）独立为 `lexicographic.go`；`strategy.go` 只留策略构造（`NewStrategy`/`ParseStrategy`）+ 内置 `cost`/`time` 注册，职责更清晰。
+
+### 2026-08-13（docs 版本记录移到文档末尾）
+
+- **决策**：docs 长期文档的版本变更记录（changelog）统一移到**文档末尾** `## 版本记录` 区块（vN 降序），顶部只保留版本号 + 元信息 + 正文，避免 changelog 影响重点；同步更新 AGENTS.md 的 docs 约定。
 
 ## 关键设计决策速查
 

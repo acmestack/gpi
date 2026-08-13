@@ -2,18 +2,6 @@
 
 - **文档版本**：v12（2026-08-09）
 - **适用项目**：Gpi（`github.com/acmestack/gpi`）
-- **v12（2026-08-09）**：移除文档内"变更规则"行（规则统一到 `AGENTS.md`）；补齐版本变更记录区。
-- **v11（2026-08-09）**：`--optimizer` 支持策略（`cost,time` 等）；内置优化器描述更新为 cost/time。
-- **v10（2026-08-09）**：新增内置 `time` 优化器；优化器消费元数据说明补充。
-- **v9（2026-08-09）**：元数据契约与 TTL 缓存运行时拆分定稿——契约在 `internal/cloud/catalog`，Cache 在 `internal/metacache`。
-- **v8（2026-08-09）**：文档版本号规则统一到项目 `AGENTS.md`（docs 长期文档版本号记录在内容中）。
-- **v7（2026-08-09）**：新云接入只需**一个 struct**——`Provider` 同时实现 `cloud.Provider` + `catalog.Source`，`cloud.Register` 类型断言自动注册元数据源；删除独立 `source` struct。
-- **v6（2026-08-09）**：新增 Redis 状态后端与 Dockerfile 说明同步。
-- **v5（2026-08-09）**：元数据全面动态化——实现 `catalog.Source`（规格/价格实时拉取），无静态数据。
-- **v4（2026-08-08）**：聚合包生成挂 `make build` 前置。
-- **v3（2026-08-08）**：聚合包 `internal/cloud/imports` 自动生成（`gen.go`）。
-- **v2（2026-08-08）**：注册收敛为单一入口（`cloud.Register`/`RegisterFactory`/`catalog.Register`）。
-- **v1（2026-08-08）**：创建本指南。
 
 ## 总览：一个云 = 一个包 + 一个 struct
 
@@ -120,3 +108,18 @@ gpi optimize examples/train.yaml --cloud foo --region region-a
 
 - GPU 内存变体匹配、多实例拆卡（A100:8 跨节点）。
 - 更多可插拔优化器（时延、碳排、预算……）按 `optimizer.Optimizer` 接口扩展。
+
+## 版本记录
+
+- **v12（2026-08-09）**：移除文档内"变更规则"行（规则统一到 `AGENTS.md`）；补齐版本变更记录区。
+- **v11（2026-08-09）**：`--optimizer` 支持策略（`cost,time` 等）；内置优化器描述更新为 cost/time。
+- **v10（2026-08-09）**：新增内置 `time` 优化器；优化器消费元数据说明补充。
+- **v9（2026-08-09）**：元数据契约与 TTL 缓存运行时拆分定稿——契约在 `internal/cloud/catalog`，Cache 在 `internal/metacache`。
+- **v8（2026-08-09）**：文档版本号规则统一到项目 `AGENTS.md`（docs 长期文档版本号记录在内容中）。
+- **v7（2026-08-09）**：新云接入只需**一个 struct**——`Provider` 同时实现 `cloud.Provider` + `catalog.Source`，`cloud.Register` 类型断言自动注册元数据源；删除独立 `source` struct。
+- **v6（2026-08-09）**：新增 Redis 状态后端与 Dockerfile 说明同步。
+- **v5（2026-08-09）**：元数据全面动态化——实现 `catalog.Source`（规格/价格实时拉取），无静态数据。
+- **v4（2026-08-08）**：聚合包生成挂 `make build` 前置。
+- **v3（2026-08-08）**：聚合包 `internal/cloud/imports` 自动生成（`gen.go`）。
+- **v2（2026-08-08）**：注册收敛为单一入口（`cloud.Register`/`RegisterFactory`/`catalog.Register`）。
+- **v1（2026-08-08）**：创建本指南。
