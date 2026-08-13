@@ -15,7 +15,7 @@
 ```
 
 <p align="center">
-  <strong>Gpi 多云算力调度器（"鸡排"）（multi-cloud compute scheduling）</strong>
+  <strong>Gpi 多云算力调度器（"机排/鸡排"）（multi-cloud compute scheduling）</strong>
   <br/>
   <em>Manage all your AI compute</em>
 </p>
@@ -33,7 +33,7 @@
 </p>
 
 <p align="center">
-  <code>Go</code> 实现 · module <code>github.com/acmestack/gpi</code> · CLI <code>gpi</code>（谐音"鸡排"）· 支持平台 <code>Linux</code> / <code>macOS</code>
+  <code>Go</code> 实现 · module <code>github.com/acmestack/gpi</code> · CLI <code>gpi</code>（谐音"机排/鸡排"）· 支持平台 <code>Linux</code> / <code>macOS</code>
 </p>
 
 ## Overview
