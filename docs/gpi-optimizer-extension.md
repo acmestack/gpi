@@ -2,15 +2,6 @@
 
 - **文档版本**：v9（2026-08-13）
 - **适用项目**：Gpi（`github.com/acmestack/gpi`）
-- **v9（2026-08-13）**：`lexicographicOptimizer` 独立为 `lexicographic.go`（算法实现），`strategy.go` 只留策略构造（`NewStrategy`/`ParseStrategy`）+ 内置注册。
-- **v8（2026-08-13）**：命名调整——`Objective` → `Metric`（打分指标），`costObjective`/`timeObjective` → `costMetric`/`timeMetric`，`RegisterObjective` → `RegisterMetric`，`objective.go` → `metric.go`；`strategyOptimizer` → `lexicographicOptimizer`（字典序多指标排序实现），对外 `NewStrategy`/`ParseStrategy` 保留。
-- **v7（2026-08-13）**：补充"打分之后：分数到底怎么用"小节——分数向量 → 字典序排序 → 截断 → Plan 的机制，含 `cost,latency` 与 `latency,cost` 的具体排序演示，以及 Optimizer 场景下分数的自由使用。
-- **v6（2026-08-13）**：修正文件职责表以匹配当前 optimizer 包结构——`optimizer.go`（接口+Get/Resolve）、`plan.go`、`request.go`、`meta.go`（含 `newCacheMeta`）、`registry.go`、`match.go`；移除已合并的 `meta_adapter.go`。
-- **v5（2026-08-09）**：新增"Objective 与 Optimizer 的差异"小节（打分维度 vs 决策整体，含选型指引）。
-- **v4（2026-08-09）**：移除文档内"变更规则"行（该规则统一到项目根 `AGENTS.md`）；补齐版本变更记录区。
-- **v3（2026-08-09）**：`timeObjective` 移入 `time.go` 并新增显式 `OptimizeByTime`/`OptimizeByTimeContext`（与 cost 对称）；`NewStrategy`/`ParseStrategy` 移到 `strategy.go`（策略构造归属）。`objective.go` 只剩 `Objective` 接口与目标注册表。更新文件职责表。
-- **v2（2026-08-09）**：`costObjective` 移到 `cost.go` 成为 cost 目标的归属；新增显式 `OptimizeByCost`/`OptimizeByCostContext`，`Optimize`/`OptimizeWithContext` 变为别名。更新文件职责表与便捷入口示例。
-- **v1（2026-08-09）**：创建本指南（架构总览、核心类型、组合式/完全式扩展、测试、演进方向、速查表）。
 
 ## 定位
 
@@ -490,3 +481,15 @@ func TestMain(m *testing.M) {
 | 读候选原始字段 | `Candidate`（规格、`OnDemand`/`Spot`/`EstimatedTime`、`CostPerHour`/`Priced`） |
 | 看内置目标名 | `MetricNames()` |
 | 看内置优化器名 | `Names()` |
+
+## 版本记录
+
+- **v9（2026-08-13）**：`lexicographicOptimizer` 独立为 `lexicographic.go`（算法实现），`strategy.go` 只留策略构造（`NewStrategy`/`ParseStrategy`）+ 内置注册。
+- **v8（2026-08-13）**：命名调整——`Objective` → `Metric`（打分指标），`costObjective`/`timeObjective` → `costMetric`/`timeMetric`，`RegisterObjective` → `RegisterMetric`，`objective.go` → `metric.go`；`strategyOptimizer` → `lexicographicOptimizer`（字典序多指标排序实现），对外 `NewStrategy`/`ParseStrategy` 保留。
+- **v7（2026-08-13）**：补充"打分之后：分数到底怎么用"小节——分数向量 → 字典序排序 → 截断 → Plan 的机制，含 `cost,latency` 与 `latency,cost` 的具体排序演示，以及 Optimizer 场景下分数的自由使用。
+- **v6（2026-08-13）**：修正文件职责表以匹配当前 optimizer 包结构——`optimizer.go`（接口+Get/Resolve）、`plan.go`、`request.go`、`meta.go`（含 `newCacheMeta`）、`registry.go`、`match.go`；移除已合并的 `meta_adapter.go`。
+- **v5（2026-08-09）**：新增"Objective 与 Optimizer 的差异"小节（打分维度 vs 决策整体，含选型指引）。
+- **v4（2026-08-09）**：移除文档内"变更规则"行（该规则统一到项目根 `AGENTS.md`）；补齐版本变更记录区。
+- **v3（2026-08-09）**：`timeObjective` 移入 `time.go` 并新增显式 `OptimizeByTime`/`OptimizeByTimeContext`（与 cost 对称）；`NewStrategy`/`ParseStrategy` 移到 `strategy.go`（策略构造归属）。`objective.go` 只剩 `Objective` 接口与目标注册表。更新文件职责表。
+- **v2（2026-08-09）**：`costObjective` 移到 `cost.go` 成为 cost 目标的归属；新增显式 `OptimizeByCost`/`OptimizeByCostContext`，`Optimize`/`OptimizeWithContext` 变为别名。更新文件职责表与便捷入口示例。
+- **v1（2026-08-09）**：创建本指南（架构总览、核心类型、组合式/完全式扩展、测试、演进方向、速查表）。
