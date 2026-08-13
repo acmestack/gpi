@@ -1,8 +1,10 @@
 # Gpi 项目沟通记录（MEMORY）
 
-- **文档版本**：v3（2026-08-09）
+- **文档版本**：v5（2026-08-13）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v5（2026-08-13）**：补录 AGENTS 提交确认/tag 规则与 release tar 修复。
+- **v4（2026-08-09）**：补录 v0.0.1 发布与 RELEASE_NOTES 决策。
 - **v3（2026-08-09）**：补录 ec2 命名、RunInstances 复用、optimizer 包拆分、OpenAPI 改 GitLab 渲染等近期决策；更新 OpenAPI 查看方式速查。
 - **v2（2026-08-09）**：按 AGENTS.md 新规则建立"每次沟通后追加记录"；补齐 K8s 部署 / OpenAPI 在线预览 / License/CLA / PR 模板等近期决策；修正头部日期。
 - **v1（2026-08-09）**：创建本文件，汇总从立项起的沟通历史与关键决策。
@@ -120,6 +122,17 @@
 - **决策**：optimizer 包按职责拆分——`plan.go`/`request.go`/`meta.go`（合并原 meta_adapter）/`registry.go`/`candidate.go`/`objective.go`/`strategy.go`/`cost.go`/`time.go`；`Optimizer` 接口 + `Get`/`Resolve` 最终保留在 `optimizer.go`，`registry.go` 只留注册表。
 - 扩展指南补"Objective vs Optimizer"差异（打分维度 vs 决策整体）。
 - **决策**：移除 GitHub Pages（不支持 OpenAPI 渲染）——删除 `pages.yml`/`docs/apis/index.html`/`swagger-initializer.js`；`openapi.json` 改提交到**仓库根**，用 **GitLab 内建 OpenAPI viewer** 在线查看（托管在 code.cestc.cn）。
+
+### 2026-08-09（发布 v0.0.1 · Release notes）
+
+- **决策**：发布首个版本 `v0.0.1`，tag 已推送 code.cestc.cn。
+- **决策**：不新增 GitLab CI——发布自动化保留在 GitHub（`.github/workflows/release.yml`，tag 触发构建 + GHCR + GitHub Release）。
+- **决策**：新建 `.github/RELEASE_NOTES.md` 作为丰富版发布说明，release workflow 用 `body_path` 引用（替代自动生成）。
+
+### 2026-08-13（AGENTS 提交确认/tag 规则 · 修复 release tar 报错）
+
+- **决策**：AGENTS.md 增加两条规则——①**每次修改后先展示 diff，用户确认后再 `git commit`**，不得直接提交；②版本发布（tag）规则：语义化版本、一律 **annotated tag**（`git tag -a` 带 message）、tag message 首行定位+版本特性、发布后改动用 `git tag -f` + `git push -f`。
+- 修复 GitHub release 报错：`tar --exclude` 必须放在文件列表**之前**（GNU tar 要求），release.yml 的 Compress 步骤调整参数顺序。
 
 ## 关键设计决策速查
 

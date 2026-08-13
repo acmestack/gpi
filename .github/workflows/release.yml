@@ -40,14 +40,15 @@ jobs:
 
       - name: Compress
         run: |
-          tar -czf gpi-${{ matrix.target.os }}-${{ matrix.target.arch }}.tar.gz gpi-* gpilet-* \
-            --exclude='*.tar.gz' --exclude='*.zip'
+          tar -czf gpi-${{ matrix.target.os }}-${{ matrix.target.arch }}.tar.gz \
+            --exclude='*.tar.gz' --exclude='*.zip' \
+            gpi-* gpilet-*
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
           files: gpi-${{ matrix.target.os }}-${{ matrix.target.arch }}.tar.gz
-          generate_release_notes: true
+          body_path: .github/RELEASE_NOTES.md
 
   docker:
     name: Publish Docker image

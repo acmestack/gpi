@@ -33,5 +33,15 @@
 - 提交前先展示将要推送的 commit/分支情况，等用户确认后再 push。
 - 修改完成后先报告改动内容和验证结果，推送前必须询问用户。
 - 每次处理完成后，把 `git diff` 的内容展示给用户，由用户判断是否可以 push。
+- **每次修改完成后，先展示 diff / 改动清单，等用户明确确认后再 `git commit`**——不得直接提交。
 - git commit message 一律使用英文。
 - commit message 根据当前变更的内容来写，内容可以简化，但必须体现变化的要点。
+
+## 版本发布（tag）
+
+- 版本号命名：语义化版本 `vMAJOR.MINOR.PATCH`（如 `v0.0.1`）。
+- 发布 tag 一律使用 **annotated tag**（`git tag -a <tag> -m "<message>"`），使 tag 本身携带版本说明；不要用轻量 tag（lightweight）。
+- tag message 内容：首行 `gpi <tag> - <一句话定位>`，随后列出该版本的**核心特性 / 变化点**（可综合该版本代表性 commit 的 message），并注明文档、License、CLA 等约定。
+- tag 指向：发布时 tag 应指向包含该版本全部改动的最新提交；若发布后又有改动需纳入，用 `git tag -f` 移动并 `git push -f` 强制更新。
+- 推送：`git push cc <tag>`（必要时 `-f`）。推 tag 前同样需用户确认。
+- 发布自动化：GitHub 侧由 `.github/workflows/release.yml` 在 `v*` tag 时触发（构建二进制 + GHCR 镜像 + GitHub Release，body 取自 `.github/RELEASE_NOTES.md`）。
