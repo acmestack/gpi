@@ -90,7 +90,7 @@ func (s lexicographicOptimizer) Optimize(ctx context.Context, req *Request) (*Pl
 	// preserves the ordered failover order (group 0 first, then group 1, ...).
 	groupOf := make(map[*Candidate]int)
 	for gi, rs := range groups {
-		groupCands, err := s.collectAndPrice(ctx, req, rs, opts, useSpot)
+		groupCands, err := s.collectAndPrice(ctx, req, rs, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -109,7 +109,7 @@ func (s lexicographicOptimizer) Optimize(ctx context.Context, req *Request) (*Pl
 
 // collectAndPrice gathers feasible candidates for one resource group and
 // attaches live prices, bounding lookups to the spec-proxy subset.
-func (s lexicographicOptimizer) collectAndPrice(ctx context.Context, req *Request, rs *task.Resources, opts *Options, useSpot bool) ([]*Candidate, error) {
+func (s lexicographicOptimizer) collectAndPrice(ctx context.Context, req *Request, rs *task.Resources, opts *Options) ([]*Candidate, error) {
 	cands, err := collectCandidates(ctx, rs, opts, opts.Cloud)
 	if err != nil {
 		return nil, err
@@ -120,7 +120,7 @@ func (s lexicographicOptimizer) collectAndPrice(ctx context.Context, req *Reques
 		})
 		cands = cands[:maxPricedCandidates]
 	}
-	attachPrices(ctx, cands, useSpot)
+	attachPrices(ctx, cands)
 	return cands, nil
 }
 

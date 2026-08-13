@@ -99,7 +99,7 @@ func collectCandidates(ctx context.Context, rs *task.Resources, opts *Options, c
 // source, grouping by (cloud, region) so one refresh covers all instance types
 // there. Failures are intentionally ignored: stale cached prices (or the other
 // pricing mode's estimate) keep placement working.
-func attachPrices(ctx context.Context, cands []*Candidate, useSpot bool) {
+func attachPrices(ctx context.Context, cands []*Candidate) {
 	groups := map[string][]*Candidate{}
 	for _, c := range cands {
 		g := c.Cloud + "\x00" + c.Region
