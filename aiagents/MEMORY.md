@@ -1,8 +1,9 @@
 # Gpi 项目沟通记录（MEMORY）
 
-- **文档版本**：v5（2026-08-13）
+- **文档版本**：v6（2026-08-13）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v6（2026-08-13）**：补录 optimizer 扩展文档文件表修正。
 - **v5（2026-08-13）**：补录 AGENTS 提交确认/tag 规则与 release tar 修复。
 - **v4（2026-08-09）**：补录 v0.0.1 发布与 RELEASE_NOTES 决策。
 - **v3（2026-08-09）**：补录 ec2 命名、RunInstances 复用、optimizer 包拆分、OpenAPI 改 GitLab 渲染等近期决策；更新 OpenAPI 查看方式速查。
@@ -133,6 +134,10 @@
 
 - **决策**：AGENTS.md 增加两条规则——①**每次修改后先展示 diff，用户确认后再 `git commit`**，不得直接提交；②版本发布（tag）规则：语义化版本、一律 **annotated tag**（`git tag -a` 带 message）、tag message 首行定位+版本特性、发布后改动用 `git tag -f` + `git push -f`。
 - 修复 GitHub release 报错：`tar --exclude` 必须放在文件列表**之前**（GNU tar 要求），release.yml 的 Compress 步骤调整参数顺序。
+
+### 2026-08-13（修正 optimizer 扩展文档文件表）
+
+- 修正 `docs/gpi-optimizer-extension.md` 文件职责表，对齐当前 optimizer 包拆分后的结构（optimizer/plan/request/meta/registry/candidate/objective/strategy/cost/time/match），移除已合并的 `meta_adapter.go` 行。
 
 ## 关键设计决策速查
 
