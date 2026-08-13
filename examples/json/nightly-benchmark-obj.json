@@ -1,0 +1,13 @@
+{
+  "task": {
+    "name": "nightly-benchmark",
+    "numNodes": 1,
+    "resources": {
+      "cpus": "4",
+      "memory": "16"
+    },
+    "backend": "cloud",
+    "setup": "echo \"setting up benchmark env\"\n",
+    "run": "echo \"running nightly benchmark\""
+  }
+}

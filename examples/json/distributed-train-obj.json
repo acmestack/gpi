@@ -1,0 +1,24 @@
+{
+  "task": {
+    "name": "distributed-train",
+    "numNodes": 2,
+    "resources": {
+      "cpus": "8+",
+      "memory": "32+",
+      "accelerators": {
+        "A100": 1
+      },
+      "labels": {
+        "role": "training",
+        "tier": "prod"
+      }
+    },
+    "tags": {
+      "owner": "ml-team",
+      "project": "llm-finetune"
+    },
+    "backend": "cloud",
+    "setup": "pip install -r requirements.txt\n",
+    "run": "python train.py --num_workers {{cluster.num_workers}} --master_addr {{cluster.head_ip}}"
+  }
+}

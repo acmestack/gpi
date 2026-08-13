@@ -598,7 +598,7 @@ func TestServerKeyStyleWithRequestID(t *testing.T) {
 // the cluster is created with the backend resolved from the JSON body.
 func TestLaunchTaskJSONBody(t *testing.T) {
 	s := testServer(t)
-	body := `{"task":{"name":"j1","backend":"local","num_nodes":1,"setup":"echo setup","run":"echo hi"}}`
+	body := `{"task":{"name":"j1","backend":"local","numNodes":1,"setup":"echo setup","run":"echo hi"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/gpi/tasks/j1/launch", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()

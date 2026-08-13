@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/acmestack/gpi/internal/task"
 )
 
 // This file implements the lexicographicOptimizer: it ranks placement
@@ -75,15 +77,43 @@ func (s lexicographicOptimizer) Optimize(ctx context.Context, req *Request) (*Pl
 		useSpot = *req.Resources.UseSpot
 	}
 
-	cands, err := collectCandidates(ctx, req.Resources, opts, opts.Cloud)
-	if err != nil {
-		return nil, err
+	// Ordered failover: the primary resources rank first, then each ordered
+	// entry's candidates follow in the given order. Without ordered, only the
+	// primary resources are considered.
+	groups := []*task.Resources{req.Resources}
+	for _, entry := range req.Resources.Ordered {
+		groups = append(groups, entry)
 	}
-	if len(cands) == 0 {
+
+	var allCands []*Candidate
+	// groupOf records which ordered group each candidate came from, so ranking
+	// preserves the ordered failover order (group 0 first, then group 1, ...).
+	groupOf := make(map[*Candidate]int)
+	for gi, rs := range groups {
+		groupCands, err := s.collectAndPrice(ctx, req, rs, opts, useSpot)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range groupCands {
+			groupOf[c] = gi
+		}
+		allCands = append(allCands, groupCands...)
+	}
+	if len(allCands) == 0 {
 		return nil, fmt.Errorf("no instance type found matching resources %s in %s", req.Resources.String(), cloudNames(opts))
 	}
 
-	// Bound price lookups to a spec-proxy-ranked subset (see Optimize step 3).
+	plan := s.rankPlan(allCands, groupOf, req, opts, useSpot)
+	return plan, nil
+}
+
+// collectAndPrice gathers feasible candidates for one resource group and
+// attaches live prices, bounding lookups to the spec-proxy subset.
+func (s lexicographicOptimizer) collectAndPrice(ctx context.Context, req *Request, rs *task.Resources, opts *Options, useSpot bool) ([]*Candidate, error) {
+	cands, err := collectCandidates(ctx, rs, opts, opts.Cloud)
+	if err != nil {
+		return nil, err
+	}
 	if len(cands) > maxPricedCandidates {
 		sort.SliceStable(cands, func(i, j int) bool {
 			return cands[i].VCPUs < cands[j].VCPUs
@@ -91,7 +121,13 @@ func (s lexicographicOptimizer) Optimize(ctx context.Context, req *Request) (*Pl
 		cands = cands[:maxPricedCandidates]
 	}
 	attachPrices(ctx, cands, useSpot)
+	return cands, nil
+}
 
+// rankPlan scores and lexicographically sorts all candidates across every
+// ordered group, then emits them as the failover Plan (group order preserved:
+// primary group's candidates first, then each ordered entry in turn).
+func (s lexicographicOptimizer) rankPlan(cands []*Candidate, groupOf map[*Candidate]int, req *Request, opts *Options, useSpot bool) *Plan {
 	// Pre-compute the runtime estimate once if a "time" metric is present,
 	// so ranking and display reuse a single value per candidate.
 	hasTime := false
@@ -121,8 +157,14 @@ func (s lexicographicOptimizer) Optimize(ctx context.Context, req *Request) (*Pl
 		}
 	}
 
-	// Lexicographic sort by metric priority; unpriced candidates sink last.
+	// Ordered failover first: group 0's candidates rank before group 1's, and
+	// so on. Within a group, lexicographic sort by metric priority applies;
+	// unpriced candidates sink last.
 	sort.SliceStable(scoredCands, func(i, j int) bool {
+		gi, gj := groupOf[scoredCands[i].c], groupOf[scoredCands[j].c]
+		if gi != gj {
+			return gi < gj
+		}
 		pi, pj := scoredCands[i].c.Priced(), scoredCands[j].c.Priced()
 		if pi != pj {
 			return pi
@@ -161,5 +203,5 @@ func (s lexicographicOptimizer) Optimize(ctx context.Context, req *Request) (*Pl
 	}
 	plan := &Plan{Launches: launches, TotalCostPerHour: launches[0].CostPerHour()}
 	plan.TotalEstimatedTime = launches[0].EstimatedTime
-	return plan, nil
+	return plan
 }

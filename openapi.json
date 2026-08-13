@@ -1,6 +1,31 @@
 {
   "components": {
     "schemas": {
+      "DockerSpec": {
+        "description": "Container execution config (backend: docker).",
+        "properties": {
+          "envs": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "gpus": {
+            "description": "Optional number of host GPUs",
+            "type": "integer"
+          },
+          "image": {
+            "type": "string"
+          },
+          "volumes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
       "Resources": {
         "description": "Compute requirements used to filter candidate instance types.",
         "properties": {
@@ -71,65 +96,127 @@
         },
         "type": "object"
       },
+      "SSHTarget": {
+        "description": "Existing host to attach to (backend: existing).",
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "key": {
+            "description": "Optional SSH private key path",
+            "type": "string"
+          },
+          "port": {
+            "description": "Optional, default 22",
+            "type": "integer"
+          },
+          "user": {
+            "description": "Optional, default root",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ServiceSpec": {
+        "description": "Exposes the task as a replicated service.",
+        "properties": {
+          "healthCheck": {
+            "description": "Optional health probe",
+            "type": "string"
+          },
+          "port": {
+            "type": "integer"
+          },
+          "ports": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "readyServer": {
+            "description": "Optional readiness URL",
+            "type": "string"
+          },
+          "replicas": {
+            "type": "integer"
+          },
+          "run": {
+            "description": "Optional service run command (defaults to task run)",
+            "type": "string"
+          },
+          "targetConcurrentSessions": {
+            "description": "Optional autoscaling target",
+            "type": "integer"
+          },
+          "workingDir": {
+            "description": "Optional working directory",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "Task": {
         "description": "A task to launch: resources to provision plus setup/run commands.",
         "properties": {
           "backend": {
-            "description": "Execution backend: cloud|existing|docker|local (default cloud)",
+            "description": "Optional execution backend: cloud|existing|docker|local (default cloud)",
             "type": "string"
           },
           "credentials": {
+            "description": "Optional per-cloud access keys: { \u003ccloud\u003e: { accessKeyId, secretAccessKey, region } }",
             "type": "object"
           },
           "docker": {
-            "type": "object"
+            "$ref": "#/components/schemas/DockerSpec"
           },
           "envs": {
             "additionalProperties": {
               "type": "string"
             },
+            "description": "Optional extra environment variables",
             "type": "object"
           },
           "fileMounts": {
             "additionalProperties": {
               "type": "string"
             },
+            "description": "Optional local files copied to each node (path → remote path)",
             "type": "object"
           },
           "name": {
+            "description": "Cluster/task name (optional; generated if empty)",
             "type": "string"
           },
           "numNodes": {
-            "description": "Number of nodes (default 1)",
+            "description": "Number of nodes, \u003e1 auto-forms Ray cluster (optional, default 1)",
             "type": "integer"
           },
           "resources": {
             "$ref": "#/components/schemas/Resources"
           },
           "run": {
-            "description": "Run command on the head node",
+            "description": "Main command executed on the head node",
             "type": "string"
           },
           "service": {
-            "type": "object"
+            "$ref": "#/components/schemas/ServiceSpec"
           },
           "setup": {
-            "description": "Setup commands run on every node",
+            "description": "Optional setup script run on every node before the task",
             "type": "string"
           },
           "ssh": {
-            "type": "object"
+            "$ref": "#/components/schemas/SSHTarget"
           },
           "tags": {
             "additionalProperties": {
               "type": "string"
             },
+            "description": "Optional labels attached to cloud instances",
             "type": "object"
           },
-          "time": {
-            "type": "string"
-          },
           "workdir": {
+            "description": "Optional local working directory uploaded to every node",
             "type": "string"
           }
         },
@@ -146,6 +233,10 @@
       "jobSubmitRequest": {
         "properties": {
           "name": {
+            "type": "string"
+          },
+          "optimizer": {
+            "description": "Placement optimizer or strategy (default: cost)",
             "type": "string"
           },
           "retries": {

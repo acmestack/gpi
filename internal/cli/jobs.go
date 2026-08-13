@@ -24,10 +24,11 @@ func newJobsCommand() *cobra.Command {
 
 func newJobsSubmitCommand() *cobra.Command {
 	var (
-		name     string
-		schedule string
-		retries  int
-		runNow   bool
+		name          string
+		schedule      string
+		retries       int
+		optimizerName string
+		runNow        bool
 	)
 	cmd := &cobra.Command{
 		Use:   "submit TASK.yaml",
@@ -35,7 +36,7 @@ func newJobsSubmitCommand() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: withCtx(func(c *ctx, cmd *cobra.Command, args []string) error {
 			mgr := jobs.New(c.store, c.prov)
-			job, err := mgr.Submit(name, args[0], schedule, retries)
+			job, err := mgr.Submit(name, args[0], schedule, retries, optimizerName)
 			if err != nil {
 				return err
 			}
@@ -55,6 +56,7 @@ func newJobsSubmitCommand() *cobra.Command {
 	cmd.Flags().StringVarP(&name, "name", "n", "", "job name (default: task name)")
 	cmd.Flags().StringVar(&schedule, "schedule", "", "cron schedule, e.g. \"0 0 * * *\" or \"@every 24h\" (empty = run on demand)")
 	cmd.Flags().IntVar(&retries, "retries", 0, "number of retries on failure")
+	cmd.Flags().StringVar(&optimizerName, "optimizer", "", "placement optimizer or strategy: cost, time, or priority list like cost,time (default: cost)")
 	cmd.Flags().BoolVar(&runNow, "run", false, "run immediately after registering")
 	return cmd
 }

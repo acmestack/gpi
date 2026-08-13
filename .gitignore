@@ -4,3 +4,6 @@
 *.pem
 .DS_Store
 /vendor/
+
+# VSCode local history
+.history/

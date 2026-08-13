@@ -21,15 +21,15 @@ func writeTmp(t *testing.T, dir, name, content string) string {
 
 // awsSec decodes the "aws" section for assertions.
 func awsSec(t *testing.T, c *Config) *struct {
-	VPCNames         []string `yaml:"vpc_names"`
-	SecurityGroupName string  `yaml:"security_group_name"`
-	SubnetNames      []string `yaml:"subnet_names"`
+	VPCNames          []string `yaml:"vpc_names"`
+	SecurityGroupName string   `yaml:"security_group_name"`
+	SubnetNames       []string `yaml:"subnet_names"`
 } {
 	t.Helper()
 	out := &struct {
-		VPCNames         []string `yaml:"vpc_names"`
-		SecurityGroupName string  `yaml:"security_group_name"`
-		SubnetNames      []string `yaml:"subnet_names"`
+		VPCNames          []string `yaml:"vpc_names"`
+		SecurityGroupName string   `yaml:"security_group_name"`
+		SubnetNames       []string `yaml:"subnet_names"`
 	}{}
 	if err := c.Section("aws", out); err != nil {
 		t.Fatalf("Section(aws): %v", err)

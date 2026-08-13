@@ -1,8 +1,15 @@
 # Gpi 项目沟通记录（MEMORY）
 
-- **文档版本**：v13（2026-08-14）
+- **文档版本**：v20（2026-08-13）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v20（2026-08-13）**：补录 example json 命名 + 删 Task.Time。
+- **v19（2026-08-13）**：补录 task 拆分 + examples yaml/json 分目录。
+- **v18（2026-08-13）**：补录 task 包 json tag 统一小驼峰 + Credentials omitempty。
+- **v17（2026-08-13）**：补录 Credentials 泛化为云无关 map。
+- **v16（2026-08-13）**：补录 Resources ordered failover。
+- **v15（2026-08-13）**：补录 serve vs server 区别小节。
+- **v14（2026-08-13）**：补录 serve/jobs 优化器支持 + SkyPilot gap 调研（含待建 issues）。
 - **v13（2026-08-14）**：补录版本号机制——版本号唯一来源 git tag，`internal/buildinfo.Version` 唯一定义处，release 时 ldflags/build-arg 注入。
 - **v12（2026-08-13）**：补录 §9.0 数据库表结构整理；移除旧单表迁移（代码/测试/文档/历史版本记录全量清理）。
 - **v11（2026-08-13）**：补录 config 架构决策——云专项配置下沉云包、`internal/config` 云无关、两个 config 区分。
@@ -128,11 +135,11 @@
 - **决策**：`RunInstances` 参考 SkyPilot 改为**先 list 再复用/重启/创建**——按 cluster 名查已有实例，running 足够直接复用、stopped（`ResumeStoppedNodes`）`StartInstances` 重启、否则新建（aliyun + aws；`LaunchSpec.ResumeStoppedNodes`，provisioner 默认开启）。
 - **决策**：optimizer 包按职责拆分——`plan.go`/`request.go`/`meta.go`（合并原 meta_adapter）/`registry.go`/`candidate.go`/`objective.go`/`strategy.go`/`cost.go`/`time.go`；`Optimizer` 接口 + `Get`/`Resolve` 最终保留在 `optimizer.go`，`registry.go` 只留注册表。
 - 扩展指南补"Objective vs Optimizer"差异（打分维度 vs 决策整体）。
-- **决策**：移除 GitHub Pages（不支持 OpenAPI 渲染）——删除 `pages.yml`/`docs/apis/index.html`/`swagger-initializer.js`；`openapi.json` 改提交到**仓库根**，用 **GitLab 内建 OpenAPI viewer** 在线查看（托管在 code.cestc.cn）。
+- **决策**：移除 GitHub Pages（不支持 OpenAPI 渲染）——删除 `pages.yml`/`docs/apis/index.html`/`swagger-initializer.js`；`openapi.json` 改提交到**仓库根**，用 **GitLab 内建 OpenAPI viewer** 在线查看。
 
 ### 2026-08-09（发布 v0.0.1 · Release notes）
 
-- **决策**：发布首个版本 `v0.0.1`，tag 已推送 code.cestc.cn。
+- **决策**：发布首个版本 `v0.0.1`，tag 已推送。
 - **决策**：不新增 GitLab CI——发布自动化保留在 GitHub（`.github/workflows/release.yml`，tag 触发构建 + GHCR + GitHub Release）。
 - **决策**：新建 `.github/RELEASE_NOTES.md` 作为丰富版发布说明，release workflow 用 `body_path` 引用（替代自动生成）。
 
@@ -178,6 +185,53 @@
 - **移除旧版单表迁移（全量）**：`internal/state/sql.go` 删除 `migrateLegacyTable`（`ensureTables` 不再调用），删除 `state_test.go` 的 `TestMigrateLegacyTable` 与 `database/sql` 导入；文档正文、§9.0、历史版本记录（v15/v9）、`gpi-enhancements-over-skypilot.md` §11、MEMORY 速查表均清理相关描述。
 - 架构文档升 v55；`go build/vet/test ./internal/state` 通过。
 
+### 2026-08-13（serve/jobs 支持自定义优化器 · SkyPilot gap 调研）
+
+- **决策**：参考 SkyPilot，`gpi serve up` 与 `gpi jobs` 都应支持优化器（SkyPilot 中 `sky serve` 用 `sdk.optimize(dag)`、jobs 用 `optimize_job_group(dag)`）。已改造：
+  - `serve up` 加 `--optimizer` flag，用 `optimizer.Resolve` 替代硬编码 `Default()`。
+  - `state.Job` 加 `Optimizer` 字段；`jobs submit` 加 `--optimizer` flag；`Manager.Submit` 接收并持久化；`runOnce` 用 `Resolve(job.Optimizer)`（空则默认 cost）。
+  - server API `jobSubmitRequest` 加 `optimizer` 字段；swagger 同步；补 `internal/jobs/jobs_test.go`（持久化/默认空测试）。
+- **调研（SkyPilot 有而 gpi 缺，待创建 GitHub issues）**：managed jobs 控制器 + 恢复策略（FAILOVER/EAGER_NEXT_REGION）、serve autoscaler、serve load balancer + 负载均衡策略、spot 抢占自动恢复、storage/volumes 对象存储、ssh_node_pools/workspaces、dashboard Web UI、admin_policy/users/usage 多租户、cloud_stores、resources 的 max_hourly_cost 预算上限。
+- **调研（问题 2，另议）**：SkyPilot `Task.resources` 是 List（`any_of`/`ordered` 候选集 + 外层默认值），gpi 现为单数；改造成重大设计变更，另行讨论。
+- 注：`gh` CLI 未安装，GitHub issues 需手动创建或改用 API。
+
+### 2026-08-13（架构文档补 serve vs server 区别）
+
+- 架构文档新增 **§9.2 serve 与 server 的区别**：`gpi serve`=把任务部署成常驻服务（SkyServe 对标），`gpi server`=启动 gpi 的 HTTP API 服务；用 LLM 服务示例 + 调用链（HTTP → server → serve）说明，记忆口诀"serve 把任务 serve 出去，server 让 gpi 当 server"。
+- 顺带修正头部版本号不一致（其他电脑升 changelog 到 v55 但头部停在 v53），统一为 v56。
+
+### 2026-08-13（Resources 支持 ordered failover）
+
+- **决策**：`task.Resources` 新增 `ordered []*Resources`（对标 SkyPilot `resources.ordered`）：外层字段作所有候选默认值、条目覆盖默认；optimizer 按序为每组生成候选并**串联成 failover Plan**（组间保持 ordered 顺序，组内按 metric 字典序排序）。
+- 实现：resources.go 加字段/解析/fillDefaultsFrom/Copy/Nothing/String；lexicographicOptimizer 重构为 `collectAndPrice`（每组收集+拉价）+ `rankPlan`（按 groupOf 分组排序）；测试 `TestOrderedFailoverResources`/`TestOrderedEntryOverridesDefaults`；示例 `examples/ordered-failover.yaml`（AWS → 阿里云）+ README 链接。
+- 架构文档 §4 记录 ordered 语义（v57）。
+
+### 2026-08-13（Credentials 泛化为云无关 map）
+
+- **决策**：`task.Credentials` 从按云硬编码（`AWS`/`Aliyun` struct + `ForCloud` switch）改为**云无关通用 map** `credentials: { <cloud>: { access_key_id, secret_access_key, region } }`——新云零改动即可复用；自定义 UnmarshalYAML 兼容 aliyun 旧字段 `access_key_secret`；`ForCloud`/`Validate` 去 switch；MarshalYAML 输出 `secret_access_key`。
+- 测试：`TestCredentialsGenericCloud`（gcp 零改动）/`TestCredentialsLegacySecretField`。
+- new-cloud v14、架构 v58 记录。
+
+### 2026-08-13（task 包 json tag 统一小驼峰 + Credentials omitempty）
+
+- **决策**：task 包所有 json tag 从 snake 统一为**小驼峰**（`num_nodes`→`numNodes`、`access_key_id`→`accessKeyId` 等），yaml tag 保持 snake（用户手写 YAML 不变）；`Credentials.Clouds`/`Task.Credentials` 加 `omitempty`。
+- server API DTO（`launchRequest`/`taskLaunchRequest`）json tag 同步改 camel，对齐 swagger 文档（此前 swagger 写 camel 但 DTO 是 snake，属不一致）。
+- 影响：`/tasks/{name}/launch` 的 Task JSON 与 launch 请求体字段名改 camel（`numNodes`/`useSpot`/`clusterName` 等）；`TestLaunchTaskJSONBody` body 更新；补 `TestCredentialsJSONCamelAndOmitEmpty`。
+
+### 2026-08-13（task 拆分 + examples 拆 yaml/json）
+
+- **决策**：task 包拆分——`credentials.go`（Credentials/CloudCredentials + 编解码）、`spec.go`（SSHTarget/DockerSpec/ServiceSpec），`task.go` 只留 Task 与解析/默认/命令方法；Task 每字段加注释、可选字段（envs/setup/workdir 等）补 omitempty。
+- **决策**：`Range.MarshalJSON` 输出紧凑字符串（`"8+"`/`"4-8"`/`"8"`），JSON 请求体 `cpus:"8+"` 友好且 round-trip。
+- **决策**：examples 拆两目录——`examples/yaml/`（10 个任务文件）+ `examples/json/`（每个场景 2 个：`{scene}-launch.json` 供 `/clusters/{name}/launch` YAML 字符串形式、`{scene}-task.json` 供 `/tasks/{name}/launch` Task 结构体形式）；`gpi-config.yaml` 留根。
+- swagger Task schema 补可选字段说明 + SSHTarget/DockerSpec/ServiceSpec 子 schema。
+- 架构 v60、new-cloud v15。
+
+### 2026-08-13（example json 命名 + 删除死字段 Task.Time）
+
+- **决策**：examples/json 命名——Task 结构体形式 `{scene}-obj.json`、YAML 字符串形式 `{scene}-yamlstr.json`（原 `-task`/`-launch` 改名）。
+- **决策**：删除死字段 `Task.Time`（无任何业务消费，仅 OrderFields 判空；SkyPilot 用 `resources.time_sec` 做运行时估算，gpi 已有 `Resources.TimeSec`）；同步删 swagger/openapi/架构文档的 `time` 字段。
+- **确认**：`config.AllowedClouds` 用途正常——`cfg.Cloud()` 在 `cli/launch.go:48,174` 被 `gpi launch/optimize` 未指定 `--cloud` 时用作默认云过滤。
+
 ## 关键设计决策速查
 
 | 决策 | 结论 |
@@ -190,7 +244,9 @@
 | 元数据访问 | 全局 `defaultMeta`（`SetDefaultMeta` 注入） |
 | REST 前缀 | `/api/v1/gpi` 可自定义（`GPI_API_PREFIX`/`--api-prefix`） |
 | task 输入 | `clusters/{name}/launch`=YAML 字符串；`tasks/{name}/launch`=Task JSON |
-| 文档版本 | 版本号记录在 docs 内容中；变更记录放顶部版本号下方 |
+| resources.ordered | 对标 SkyPilot `ordered`：failover 候选列表，组间按序、组内按 metric 排序 |
+| 文档版本 | 版本号记录在 docs 内容中；变更记录放文档末尾 `## 版本记录` |
+| 优化器入口 | launch/optimize/serve up/jobs/server API 均支持 `--optimizer`/`optimizer` 字段（`Resolve`） |
 | K8s 部署 | `deploy/k8s/`，`kubectl apply -k deploy/k8s`；默认 redis 后端 |
 | OpenAPI 在线查看 | 仓库根 `openapi.json` + GitLab 内建 viewer（无需 GitHub Pages） |
 | License / CLA | MIT；AcmeStack CLA（`.github/CLA.md` + cla-assistant） |

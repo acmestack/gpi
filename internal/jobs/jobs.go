@@ -23,7 +23,9 @@ func New(store *state.Store, prov *backend.Manager) *Manager {
 }
 
 // Submit registers a new job from a task file, either scheduled or queued.
-func (m *Manager) Submit(name, taskPath, schedule string, retries int) (*state.Job, error) {
+// optimizer selects the placement optimizer/strategy for this job (empty =
+// the default "cost").
+func (m *Manager) Submit(name, taskPath, schedule string, retries int, optimizer string) (*state.Job, error) {
 	ts, err := task.Load(taskPath)
 	if err != nil {
 		return nil, err
@@ -33,12 +35,13 @@ func (m *Manager) Submit(name, taskPath, schedule string, retries int) (*state.J
 	}
 
 	job := &state.Job{
-		Name:     name,
-		TaskYAML: ts.String(),
-		TaskPath: taskPath,
-		Schedule: schedule,
-		Retries:  retries,
-		Status:   "registered",
+		Name:      name,
+		TaskYAML:  ts.String(),
+		TaskPath:  taskPath,
+		Schedule:  schedule,
+		Retries:   retries,
+		Optimizer: optimizer,
+		Status:    "registered",
 	}
 
 	if schedule == "" {
@@ -82,7 +85,7 @@ func (m *Manager) RunNow(ctx context.Context, name string, stream func(string)) 
 		if attempt > 0 && stream != nil {
 			stream(fmt.Sprintf("[retry %d/%d]", attempt, job.Retries))
 		}
-		lastErr = m.runOnce(ctx, name, ts, cluster, stream)
+		lastErr = m.runOnce(ctx, name, ts, cluster, job.Optimizer, stream)
 		if lastErr == nil {
 			m.Store.UpdateJob(name, func(j *state.Job) error {
 				j.Status = "done"
@@ -106,12 +109,16 @@ func (m *Manager) RunNow(ctx context.Context, name string, stream func(string)) 
 	return lastErr
 }
 
-func (m *Manager) runOnce(ctx context.Context, name string, ts *task.Task, cluster string, stream func(string)) error {
+func (m *Manager) runOnce(ctx context.Context, name string, ts *task.Task, cluster, optimizerName string, stream func(string)) error {
 	var launch *optimizer.Launch
 	if ts.Backend != task.BackendCloud {
 		launch = &optimizer.Launch{Cloud: ts.Backend, NumNodes: ts.NumNodes}
 	} else {
-		plan, err := optimizer.Default().Optimize(ctx, &optimizer.Request{
+		opt, err := optimizer.Resolve(optimizerName)
+		if err != nil {
+			return err
+		}
+		plan, err := opt.Optimize(ctx, &optimizer.Request{
 			Resources: ts.Resources,
 			Options:   &optimizer.Options{NumNodes: ts.NumNodes},
 		})

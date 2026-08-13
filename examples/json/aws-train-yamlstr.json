@@ -1,0 +1,5 @@
+{
+  "task": "name: aws-train\nnum_nodes: 1\n\nresources:\n  cloud: aws\n  accelerators: A100:8\n  cpus: 96\n  memory: 1000+\n\nsetup: |\n  pip install -r requirements.txt\n\nrun: |\n  python train.py --epochs 100",
+  "cloud": "aws",
+  "region": "us-east-1"
+}

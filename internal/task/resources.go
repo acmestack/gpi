@@ -16,32 +16,40 @@ const (
 // instance type, CPU/memory/disk ranges, accelerators, spot preference, and
 // node labels for Ray scheduling. TimeSec is the user's estimate of how long
 // the task runs (seconds); the "time" optimizer ranks candidates by it.
+//
+// Ordered is an optional failover list of alternative resource requirements
+// (mirrors SkyPilot's resources.ordered): the fields on this Resources act as
+// defaults for every entry, and entries override them. The optimizer tries
+// entries in the given order — first entry's candidates rank first, then the
+// second entry's, and so on.
 type Resources struct {
-	Cloud        string            `yaml:"cloud" json:"cloud"`
+	Cloud        string            `yaml:"cloud" json:"cloud,omitempty"`
 	Region       string            `yaml:"region,omitempty" json:"region,omitempty"`
 	Zone         string            `yaml:"zone,omitempty" json:"zone,omitempty"`
-	InstanceType string            `yaml:"instance_type,omitempty" json:"instance_type,omitempty"`
+	InstanceType string            `yaml:"instance_type,omitempty" json:"instanceType,omitempty"`
 	Cpus         *Range            `yaml:"cpus,omitempty" json:"cpus,omitempty"`
 	Memory       *Range            `yaml:"memory,omitempty" json:"memory,omitempty"`
-	DiskSize     *Range            `yaml:"disk_size,omitempty" json:"disk_size,omitempty"`
+	DiskSize     *Range            `yaml:"disk_size,omitempty" json:"diskSize,omitempty"`
 	Accelerators Accelerators      `yaml:"accelerators,omitempty" json:"accelerators,omitempty"`
-	UseSpot      *bool             `yaml:"use_spot,omitempty" json:"use_spot,omitempty"`
-	TimeSec      *int              `yaml:"time_sec,omitempty" json:"time_sec,omitempty"`
+	UseSpot      *bool             `yaml:"use_spot,omitempty" json:"useSpot,omitempty"`
+	TimeSec      *int              `yaml:"time_sec,omitempty" json:"timeSec,omitempty"`
 	Labels       map[string]string `yaml:"labels,omitempty" json:"labels,omitempty"`
+	Ordered      []*Resources      `yaml:"ordered,omitempty" json:"ordered,omitempty"`
 }
 
 type rawResources struct {
 	Cloud        string            `yaml:"cloud" json:"cloud"`
 	Region       string            `yaml:"region" json:"region"`
 	Zone         string            `yaml:"zone" json:"zone"`
-	InstanceType string            `yaml:"instance_type" json:"instance_type"`
+	InstanceType string            `yaml:"instance_type" json:"instanceType"`
 	Cpus         *Range            `yaml:"cpus" json:"cpus"`
 	Memory       *Range            `yaml:"memory" json:"memory"`
-	DiskSize     *Range            `yaml:"disk_size" json:"disk_size"`
+	DiskSize     *Range            `yaml:"disk_size" json:"diskSize"`
 	Accelerators any               `yaml:"accelerators" json:"accelerators"`
-	UseSpot      *bool             `yaml:"use_spot" json:"use_spot"`
-	TimeSec      *int              `yaml:"time_sec" json:"time_sec"`
+	UseSpot      *bool             `yaml:"use_spot" json:"useSpot"`
+	TimeSec      *int              `yaml:"time_sec" json:"timeSec"`
 	Labels       map[string]string `yaml:"labels" json:"labels"`
+	Ordered      []*Resources      `yaml:"ordered" json:"ordered"`
 }
 
 // UnmarshalYAML parses resource filters, decoding accelerators flexibly.
@@ -69,7 +77,51 @@ func (r *Resources) UnmarshalYAML(unmarshal func(any) error) error {
 		}
 		r.Accelerators = accel
 	}
+	// Ordered failover entries inherit this Resources' fields as defaults;
+	// a field set on an entry overrides the inherited default.
+	for _, entry := range raw.Ordered {
+		entry.fillDefaultsFrom(r)
+		r.Ordered = append(r.Ordered, entry)
+	}
 	return nil
+}
+
+// fillDefaultsFrom copies any unset field of r from base (outer defaults).
+// Entry fields that are already set win over the defaults.
+func (r *Resources) fillDefaultsFrom(base *Resources) {
+	if r.Cloud == "" {
+		r.Cloud = base.Cloud
+	}
+	if r.Region == "" {
+		r.Region = base.Region
+	}
+	if r.Zone == "" {
+		r.Zone = base.Zone
+	}
+	if r.InstanceType == "" {
+		r.InstanceType = base.InstanceType
+	}
+	if r.Cpus == nil {
+		r.Cpus = base.Cpus
+	}
+	if r.Memory == nil {
+		r.Memory = base.Memory
+	}
+	if r.DiskSize == nil {
+		r.DiskSize = base.DiskSize
+	}
+	if r.UseSpot == nil {
+		r.UseSpot = base.UseSpot
+	}
+	if r.TimeSec == nil {
+		r.TimeSec = base.TimeSec
+	}
+	if len(r.Accelerators) == 0 {
+		r.Accelerators = base.Accelerators
+	}
+	if len(r.Labels) == 0 {
+		r.Labels = base.Labels
+	}
 }
 
 // DefaultResources returns an empty Resources (all filters unset).
@@ -121,6 +173,12 @@ func (r *Resources) Copy() *Resources {
 			c.Labels[k] = v
 		}
 	}
+	if r.Ordered != nil {
+		c.Ordered = make([]*Resources, len(r.Ordered))
+		for i, e := range r.Ordered {
+			c.Ordered[i] = e.Copy()
+		}
+	}
 	return &c
 }
 
@@ -162,7 +220,8 @@ func (r *Resources) Nothing() bool {
 	return r == nil ||
 		(r.Cloud == "" && r.Region == "" && r.Zone == "" && r.InstanceType == "" &&
 			r.Cpus == nil && r.Memory == nil && r.DiskSize == nil &&
-			len(r.Accelerators) == 0 && r.UseSpot == nil && r.TimeSec == nil && len(r.Labels) == 0)
+			len(r.Accelerators) == 0 && r.UseSpot == nil && r.TimeSec == nil &&
+			len(r.Labels) == 0 && len(r.Ordered) == 0)
 }
 
 // Validate checks that the resources are well-formed (e.g. a known cloud).
@@ -217,6 +276,9 @@ func (r *Resources) String() string {
 	}
 	if r.TimeSec != nil {
 		parts = append(parts, fmt.Sprintf("time:%ds", *r.TimeSec))
+	}
+	if len(r.Ordered) > 0 {
+		parts = append(parts, fmt.Sprintf("ordered:%d", len(r.Ordered)))
 	}
 	if len(parts) == 0 {
 		return "[default]"

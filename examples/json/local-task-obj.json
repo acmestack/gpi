@@ -1,0 +1,10 @@
+{
+  "task": {
+    "name": "local-task",
+    "numNodes": 1,
+    "resources": {},
+    "backend": "local",
+    "setup": "python3 -c \"print('local setup ok')\"\n",
+    "run": "python3 -c \"print('hello from local backend')\""
+  }
+}

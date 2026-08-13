@@ -26,10 +26,11 @@ func newServeCommand() *cobra.Command {
 
 func newServeUpCommand() *cobra.Command {
 	var (
-		name      string
-		cloudFlag string
-		region    string
-		noConfirm bool
+		name          string
+		cloudFlag     string
+		region        string
+		optimizerName string
+		noConfirm     bool
 	)
 	cmd := &cobra.Command{
 		Use:   "up SERVICE.yaml",
@@ -46,7 +47,11 @@ func newServeUpCommand() *cobra.Command {
 			if name == "" {
 				name = ts.Name
 			}
-			plan, err := optimizer.Default().Optimize(cmd.Context(), &optimizer.Request{
+			opt, err := optimizer.Resolve(optimizerName)
+			if err != nil {
+				return err
+			}
+			plan, err := opt.Optimize(cmd.Context(), &optimizer.Request{
 				Resources: ts.Resources,
 				Options: &optimizer.Options{
 					Cloud:  cloudFlag,
@@ -81,6 +86,7 @@ func newServeUpCommand() *cobra.Command {
 	cmd.Flags().StringVarP(&name, "name", "n", "", "service name (default: task name)")
 	cmd.Flags().StringVar(&cloudFlag, "cloud", "", "cloud filter")
 	cmd.Flags().StringVarP(&region, "region", "r", "", "region filter")
+	cmd.Flags().StringVar(&optimizerName, "optimizer", "", "placement optimizer or strategy: cost, time, or priority list like cost,time (default: cost)")
 	cmd.Flags().BoolVarP(&noConfirm, "yes", "y", false, "skip confirmation prompt")
 	return cmd
 }

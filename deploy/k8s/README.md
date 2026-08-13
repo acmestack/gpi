@@ -32,7 +32,7 @@ kubectl -n gpi port-forward svc/gpi 8080:8080
 curl http://localhost:8080/healthz
 
 # API 文档（最新规范在仓库根 openapi.json，GitLab 内建在线渲染）
-open https://code.cestc.cn/zhucongqi/gpi/-/blob/main/openapi.json
+open https://github.com/acmestack/gpi/blob/main/openapi.json
 ```
 
 Deployment 默认**不开启** `--docs`（Swagger UI 不随服务暴露）。最新 OpenAPI 规范在仓库根 `openapi.json`（`make openapi` 重新生成），GitLab 打开即得交互式 UI；需要交互式 UI 时粘贴到 [Swagger Editor](https://editor.swagger.io)。如需在服务上提供 `/swagger.json`，在 `deployment.yaml` 的 `args` 中加回 `--docs`。生产环境可用 Ingress / LoadBalancer 暴露 Service。

@@ -1,0 +1,3 @@
+{
+  "task": "name: train\nnum_nodes: 1\n\nresources:\n  accelerators: A100:1\n  cpus: 8+\n  memory: 32+\n  disk_size: 100\n\nsetup: |\n  pip install -r requirements.txt\n\nrun: |\n  python train.py --epochs 100\n"
+}

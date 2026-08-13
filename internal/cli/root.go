@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/acmestack/gpi/internal/buildinfo"
 	"github.com/acmestack/gpi/internal/backend"
+	"github.com/acmestack/gpi/internal/buildinfo"
 	"github.com/acmestack/gpi/internal/state"
 )
 

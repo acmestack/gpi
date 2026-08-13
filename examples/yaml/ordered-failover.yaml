@@ -1,0 +1,21 @@
+name: ordered-failover
+num_nodes: 1
+
+resources:
+  # 外层字段作为所有 ordered 条目的默认值（这里：都要求 8+ CPU、1x A100）。
+  cpus: 8+
+  accelerators: A100:1
+  # ordered：按序 failover——optimizer 先尝试第一组，没货再依次尝试后续组。
+  ordered:
+    # 优先 AWS（us-east-1 的 p4d/A100）
+    - cloud: aws
+      region: us-east-1
+    # AWS 无货则回退阿里云（cn-hangzhou 的 gn7/A100）
+    - cloud: aliyun
+      region: cn-hangzhou
+
+setup: |
+  pip install -r requirements.txt
+
+run: |
+  python train.py --epochs 100
