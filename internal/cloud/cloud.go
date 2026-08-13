@@ -52,6 +52,10 @@ type LaunchSpec struct {
 	UserData        string
 	Tags            map[string]string
 	NamePrefix      string
+	// ResumeStoppedNodes makes RunInstances reuse stopped instances of the
+	// cluster (restarting them) instead of always creating new ones, mirroring
+	// SkyPilot's reuse of stopped nodes on relaunch.
+	ResumeStoppedNodes bool
 }
 
 // Provider is the cloud abstraction. Implementations are registered by name

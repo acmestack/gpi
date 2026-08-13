@@ -1,7 +1,8 @@
 # Optimizer 扩展指南（Extending the Placement Optimizer）
 
-- **文档版本**：v4（2026-08-09）
+- **文档版本**：v5（2026-08-09）
 - **适用项目**：Gpi（`github.com/acmestack/gpi`）
+- **v5（2026-08-09）**：新增"Objective 与 Optimizer 的差异"小节（打分维度 vs 决策整体，含选型指引）。
 - **v4（2026-08-09）**：移除文档内"变更规则"行（该规则统一到项目根 `AGENTS.md`）；补齐版本变更记录区。
 - **v3（2026-08-09）**：`timeObjective` 移入 `time.go` 并新增显式 `OptimizeByTime`/`OptimizeByTimeContext`（与 cost 对称）；`NewStrategy`/`ParseStrategy` 移到 `strategy.go`（策略构造归属）。`objective.go` 只剩 `Objective` 接口与目标注册表。更新文件职责表。
 - **v2（2026-08-09）**：`costObjective` 移到 `cost.go` 成为 cost 目标的归属；新增显式 `OptimizeByCost`/`OptimizeByCostContext`，`Optimize`/`OptimizeWithContext` 变为别名。更新文件职责表与便捷入口示例。
@@ -56,6 +57,27 @@ Plan{Launches[] *Launch}       // 5. failover 顺序 + 总价/总时长
 |------|--------|---------|------|
 | 组合式 | 实现 `Objective` + `RegisterObjective`/`NewStrategy` | 只需打分 | 大多数场景（latency/carbon/budget 等新目标） |
 | 完全式 | 实现 `Optimizer` + `Register` | 接管整个 Optimize | 需要自定义候选管道/搜索逻辑（如 ILP、遗传算法） |
+
+### Objective 与 Optimizer 的差异
+
+两者经常被混淆，本质是"打分的维度"与"决策的整体"的区别：
+
+| | `Objective` | `Optimizer` |
+|---|---|---|
+| 回答的问题 | **怎么给一个候选打分**（一个维度） | **怎么排出一份 Plan**（整个决策） |
+| 粒度 | 一个候选一行打分值 | 候选集 → 排序 → 截断 → Plan |
+| 方法签名 | `Rank(c *Candidate, useSpot) float64` | `Optimize(ctx, *Request) (*Plan, error)` |
+| 视角 | 局部（单候选） | 全局（所有候选 + 元数据 + 搜索策略） |
+| 可否组合 | 可组合成策略（`cost,time` 字典序） | 注册成命名优化器（`--optimizer <name>`） |
+| 是否接触元数据 | 否（只读 `Candidate` 上已附好的数据） | 是（可读 `Meta`/元数据，控制收集与拉价） |
+| 典型扩展 | latency / carbon / budget / 时延 | ILP / 遗传算法 / 带约束搜索 |
+
+**什么时候用 Objective，什么时候用 Optimizer？**
+
+- 你的扩展本质是"**新增一个考虑因素/打分维度**"（如时延、碳排、预算上限）→ **实现 `Objective`**。候选收集、拉价、无价沉底、字典序排序全部由 `strategyOptimizer` 处理，你只需 `Rank` 返回一个数，零样板代码。
+- 你的扩展本质是"**换一种决策方式**"（无法用若干目标打分表达，例如组合优化、带约束搜索、遗传算法）→ **实现 `Optimizer`**，接管整个 `Optimize`，但需要自己处理候选收集/拉价（或基于 `Optimize` 的结果二次处理）。
+
+> 简单记忆：**Objective 是"一个打分"，Optimizer 是"一整套决策"**。想加维度用 Objective，想换算法用 Optimizer。
 
 ---
 

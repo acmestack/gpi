@@ -1,12 +1,13 @@
 # Gpi 架构设计文档
 
-- **文档版本**：v48（2026-08-09）
+- **文档版本**：v49（2026-08-09）
 - **module**：`github.com/acmestack/gpi`
 - **CLI**：`gpi`（二进制 `cmd/gpi`）
 - **目标**：参考 SkyPilot 模式，用 Go 重写实现多云算力调度（multi-cloud compute scheduling），对标 SkyPilot 的 launcher / optimizer / SkyServe / Sky Jobs / API server。
 
 ## 版本记录
 
+- **v49（2026-08-09）**：①`RunInstances` 参考 SkyPilot 改为**先 list 再复用/重启/创建**——按 cluster 名列出已有实例，running 足够直接复用、stopped（`ResumeStoppedNodes`）`StartInstances` 重启复用、否则新建（aliyun + aws，`LaunchSpec.ResumeStoppedNodes`，provisioner 默认开启）；②optimizer 包按职责拆分（plan/request/meta/registry/candidate/objective/strategy/cost/time）；③扩展指南补"Objective vs Optimizer"差异。文档升版 v49。
 - **v48（2026-08-09）**：OpenAPI 在线预览路径改为 `https://acmestack.github.io/gpi/apis`——Swagger UI 三件套（index.html/swagger-initializer.js/openapi.json）移到 `docs/apis/`，`make openapi` 输出到 `docs/apis/openapi.json`。文档升版 v48。
 - **v47（2026-08-09）**：OpenAPI 交互式在线预览——`docs/index.html` + `swagger-initializer.js`（Swagger UI 加载 `./openapi.json`）+ `.github/workflows/pages.yml`（GitHub Pages 发布 `docs/`），访问 `https://acmestack.github.io/gpi/apis` 即可交互查看（GitLab 内建 OpenAPI 预览，GitHub 用 Pages 等效）。文档升版 v47。
 - **v46（2026-08-09）**：OpenAPI 在线查看——`cmd/gen-openapi` + `make openapi` 生成最新 `docs/openapi.json` 提交仓库，GitHub 网页直接查看，无需启动服务；K8s Deployment 默认**不开启** `--docs`（Swagger UI 不随服务暴露）。文档升版 v46。
@@ -258,7 +259,7 @@ internal/
 - **`catalog.Source` 接口**：`Cloud()` / `SpecsTTL()` / `PriceTTL()` / `Regions(ctx)` / `FetchSpecs(ctx, region)` / `FetchPrices(ctx, region, types)`。云 provider 的 `init()` 只需 `cloud.Register(Provider{})`——`cloud.Register` 用类型断言自动把满足 `catalog.Source` 的 provider 注册为元数据源（聚合包 `internal/cloud/imports` 统一挂载）。
 - **TTL 缓存策略（`metacache`）**：规格默认 24h（低价变更）、价格默认 10min，各云可在 `SpecsTTL()/PriceTTL()` 自定义。拉取失败保留旧数据不报错（stale-while-error）；`PricesForced` 绕过 TTL 强制刷新（launch 确认前用），失败有 5s 冷却。
 - **Optimizer 可插拔 + 策略**：`optimizer.Optimizer` 接口（`Name()` + `Optimize(ctx, *Request) (*Plan, error)`）+ 注册表。`Request` 只含任务资源与 `Options`——**元数据全局唯一**，内部统一走未导出的 `defaultMeta`（`metacache.Cache`），测试/扩展用 `SetDefaultMeta` 注入，需要强刷价格走导出便捷 `PricesForced`。`Plan` 即 failover 顺序。扩展算法由扩展者自定义，`gpi` 只约定必要入参/出参。
-- **扩展优化器（公开 API）**：`Optimizer`/`Objective`/`Candidate`/`RegisterObjective`/`ParseStrategy`/`NewStrategy`/`SetDefaultMeta` 导出。第三方只需：①实现 `Objective`（`Name()` + `Rank(c *Candidate, useSpot)`，如 latency/carbon）；②`RegisterObjective("latency", latencyObjective{})` 或 `NewStrategy(latencyObjective{}, costObjective{})`。候选收集与拉价由策略优化器内部完成，无需扩展者重复实现。候选/管道代码收在 `candidate.go`，`cost` 目标与 `OptimizeByCost` 收在 `cost.go`，`time` 目标与 `OptimizeByTime` 收在 `time.go`，`Objective` 接口与注册在 `objective.go`，策略构造与排序在 `strategy.go`。参见 `optimizer_ext_test.go`（外部包测试即扩展示例）与 [gpi-optimizer-extension.md](gpi-optimizer-extension.md)（完整扩展指南）。
+- **扩展优化器（公开 API）**：`Optimizer`/`Objective`/`Candidate`/`RegisterObjective`/`ParseStrategy`/`NewStrategy`/`SetDefaultMeta` 导出。第三方只需：①实现 `Objective`（`Name()` + `Rank(c *Candidate, useSpot)`，如 latency/carbon）；②`RegisterObjective("latency", latencyObjective{})` 或 `NewStrategy(latencyObjective{}, costObjective{})`。候选收集与拉价由策略优化器内部完成，无需扩展者重复实现。optimizer 包按职责拆分：`plan.go`（Launch/Plan）、`request.go`（Options/Request）、`meta.go`（Meta 接口 + defaultMeta）、`registry.go`（Optimizer 注册表）、`candidate.go`（候选 + 管道）、`objective.go`（Objective 接口 + 注册）、`strategy.go`（策略排序）、`cost.go`（cost 目标）、`time.go`（time 目标）。参见 `optimizer_ext_test.go`（外部包测试即扩展示例）与 [gpi-optimizer-extension.md](gpi-optimizer-extension.md)（完整扩展指南）。
 - **两种选择模式**：
   - **指定优化器**：`--optimizer cost|time`——单目标（cost 默认，候选集 → 按 `$/hr` 升序；time 按预估运行时长升序，输出 EST TIME 列）。
   - **指定优化策略**：`--optimizer <obj1>,<obj2>,...`——**字典序多目标**（参考 SkyPilot 组合优化思想），如 `cost,time`（先按成本、同价再看时间）、`time,cost`（先按时间、同时间再看成本），优先级可任意组合/重复。API 请求体 `optimizer` 字段同样生效（launch / service up）。
@@ -290,7 +291,7 @@ type Provider interface {
 
 Provider 若同时实现 `catalog.Source`（元数据契约，见 §5），`cloud.Register` 自动把它注册为元数据源——一个 struct 全实现，新云零额外注册。
 
-缓存确保幂等：`RunInstances` 内部自动补齐 ImageID、SecurityGroup、VSwitch；KeyPair 由 provisioner 在本地保存私钥。
+缓存确保幂等：`RunInstances` 内部自动补齐 ImageID、SecurityGroup、VSwitch；KeyPair 由 provisioner 在本地保存私钥。**复用语义（参考 SkyPilot）**：`RunInstances` 先按 cluster 名列出已有实例——running 足够则直接复用、有 stopped（且 `ResumeStoppedNodes`）则 `StartInstances` 重启复用，否则才新建。
 
 ## 7. 阿里云 Provider 实现
 
