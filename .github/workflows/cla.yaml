@@ -21,7 +21,14 @@ jobs:
           PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
         with:
           path-to-signatures: 'signatures/version1/cla.json'
-          path-to-document: 'https://raw.githubusercontent.com/acmestack/gpi/main/.github/CLA.md'
+          path-to-document: 'https://github.com/acmestack/.github/blob/main/AcmeStack-CLA.md' # e.g. a CLA or a DCO document
           # branch should not be protected
           branch: 'cla'
           allowlist: bot*,*[bot],dependabot[bot],github-actions[bot]
+          custom-notsigned-prcomment: |
+            :wave: Thanks for your contribution to AcmeStack!
+
+            Please read and sign our [Contributor License Agreement](https://acmestack.com/docs/contributing/contributor-license-agreement/) to enable your pull request to be merged.
+
+            Reply the following message to sign the CLA:
+            > I have read the CLA Document and I hereby sign the CLA
