@@ -59,7 +59,7 @@
             "type": "string"
           },
           "timeSec": {
-            "description": "Estimated runtime in seconds (used by the time objective)",
+            "description": "Estimated runtime in seconds (used by the time metric)",
             "type": "integer"
           },
           "useSpot": {

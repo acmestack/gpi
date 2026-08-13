@@ -226,7 +226,7 @@ func swaggerSpec(prefix string) map[string]any {
 						"diskSize":     map[string]any{"oneOf": []any{map[string]any{"type": "string"}, map[string]any{"type": "integer"}}},
 						"accelerators": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "integer"}, "description": "e.g. {\"A100\": 1}"},
 						"useSpot":      map[string]any{"type": "boolean"},
-						"timeSec":      map[string]any{"type": "integer", "description": "Estimated runtime in seconds (used by the time objective)"},
+						"timeSec":      map[string]any{"type": "integer", "description": "Estimated runtime in seconds (used by the time metric)"},
 						"labels":       map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}},
 					},
 				},

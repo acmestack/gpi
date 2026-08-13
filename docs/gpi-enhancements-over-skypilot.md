@@ -120,6 +120,6 @@
 ## 演进方向（后续增强）
 
 - 多实例拆卡（如 A100:8 跨节点）。
-- 更多可插拔目标/优化器（时延、碳排、预算……）按 `optimizer.Objective`/`optimizer.Optimizer` 接口扩展，可作为独立优化器或 `cost,latency` 策略中的优先级组合。
+- 更多可插拔目标/优化器（时延、碳排、预算……）按 `optimizer.Metric`/`optimizer.Optimizer` 接口扩展，可作为独立优化器或 `cost,latency` 策略中的优先级组合。
 - spot 竞价格上限、自动伸缩/健康轮询（SkyServe 对等）。
 - job 日志持久化与历史查询。

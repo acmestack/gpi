@@ -1,6 +1,6 @@
 <!-- Use a short, clear title following Conventional Commits, e.g.:
      标题请用简短清晰的描述，遵循 Conventional Commits，例如：
-     feat(optimizer): add latency objective
+     feat(optimizer): add latency metric
      fix(server): resolve swagger requestBody under snake key style
      docs: add pr template
 -->

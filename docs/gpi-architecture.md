@@ -1,12 +1,14 @@
 # Gpi 架构设计文档
 
-- **文档版本**：v51（2026-08-09）
+- **文档版本**：v53（2026-08-13）
 - **module**：`github.com/acmestack/gpi`
 - **CLI**：`gpi`（二进制 `cmd/gpi`）
 - **目标**：参考 SkyPilot 模式，用 Go 重写实现多云算力调度（multi-cloud compute scheduling），对标 SkyPilot 的 launcher / optimizer / SkyServe / Sky Jobs / API server。
 
 ## 版本记录
 
+- **v53（2026-08-13）**：`lexicographicOptimizer` 独立为 `lexicographic.go`（算法实现），`strategy.go` 只留策略构造（`NewStrategy`/`ParseStrategy`）+ 内置注册。文档升版 v53。
+- **v52（2026-08-13）**：optimizer 命名调整——`Objective` → `Metric`（打分指标），`costObjective`/`timeObjective` → `costMetric`/`timeMetric`，`RegisterObjective` → `RegisterMetric`，`objective.go` → `metric.go`；`strategyOptimizer` → `lexicographicOptimizer`（字典序多指标排序），对外 `NewStrategy`/`ParseStrategy` 保留。文档升版 v52。
 - **v51（2026-08-09）**：移除 GitHub Pages（`.github/workflows/pages.yml`、`docs/apis/index.html`、`swagger-initializer.js`）——GitHub 不支持内建 OpenAPI 渲染。`openapi.json` 改提交到**仓库根**，利用 **GitLab 内建 OpenAPI viewer** 在线交互查看（项目托管在 code.cestc.cn）。文档升版 v51。
 - **v50（2026-08-09）**：optimizer 包再调整——`Optimizer` 接口与 `Get`/`Resolve` 解析入口移回 `optimizer.go`，`registry.go` 只保留命名注册表（`Register`/`Names`/`Default`/`DefaultName`）。文档升版 v50。
 - **v49（2026-08-09）**：①`RunInstances` 参考 SkyPilot 改为**先 list 再复用/重启/创建**——按 cluster 名列出已有实例，running 足够直接复用、stopped（`ResumeStoppedNodes`）`StartInstances` 重启复用、否则新建（aliyun + aws，`LaunchSpec.ResumeStoppedNodes`，provisioner 默认开启）；②optimizer 包按职责拆分（plan/request/meta/registry/candidate/objective/strategy/cost/time）；③扩展指南补"Objective vs Optimizer"差异。文档升版 v49。
@@ -261,11 +263,11 @@ internal/
 - **`catalog.Source` 接口**：`Cloud()` / `SpecsTTL()` / `PriceTTL()` / `Regions(ctx)` / `FetchSpecs(ctx, region)` / `FetchPrices(ctx, region, types)`。云 provider 的 `init()` 只需 `cloud.Register(Provider{})`——`cloud.Register` 用类型断言自动把满足 `catalog.Source` 的 provider 注册为元数据源（聚合包 `internal/cloud/imports` 统一挂载）。
 - **TTL 缓存策略（`metacache`）**：规格默认 24h（低价变更）、价格默认 10min，各云可在 `SpecsTTL()/PriceTTL()` 自定义。拉取失败保留旧数据不报错（stale-while-error）；`PricesForced` 绕过 TTL 强制刷新（launch 确认前用），失败有 5s 冷却。
 - **Optimizer 可插拔 + 策略**：`optimizer.Optimizer` 接口（`Name()` + `Optimize(ctx, *Request) (*Plan, error)`）+ 注册表。`Request` 只含任务资源与 `Options`——**元数据全局唯一**，内部统一走未导出的 `defaultMeta`（`metacache.Cache`），测试/扩展用 `SetDefaultMeta` 注入，需要强刷价格走导出便捷 `PricesForced`。`Plan` 即 failover 顺序。扩展算法由扩展者自定义，`gpi` 只约定必要入参/出参。
-- **扩展优化器（公开 API）**：`Optimizer`/`Objective`/`Candidate`/`RegisterObjective`/`ParseStrategy`/`NewStrategy`/`SetDefaultMeta` 导出。第三方只需：①实现 `Objective`（`Name()` + `Rank(c *Candidate, useSpot)`，如 latency/carbon）；②`RegisterObjective("latency", latencyObjective{})` 或 `NewStrategy(latencyObjective{}, costObjective{})`。候选收集与拉价由策略优化器内部完成，无需扩展者重复实现。optimizer 包按职责拆分：`optimizer.go`（`Optimizer` 接口 + `Get`/`Resolve` 解析入口）、`plan.go`（Launch/Plan）、`request.go`（Options/Request）、`meta.go`（Meta 接口 + defaultMeta）、`registry.go`（命名注册表）、`candidate.go`（候选 + 管道）、`objective.go`（Objective 接口 + 注册）、`strategy.go`（策略排序）、`cost.go`（cost 目标）、`time.go`（time 目标）。参见 `optimizer_ext_test.go`（外部包测试即扩展示例）与 [gpi-optimizer-extension.md](gpi-optimizer-extension.md)（完整扩展指南）。
+ - **扩展优化器（公开 API）**：`Optimizer`/`Metric`/`Candidate`/`RegisterMetric`/`ParseStrategy`/`NewStrategy`/`SetDefaultMeta` 导出。第三方只需：①实现 `Metric`（`Name()` + `Rank(c *Candidate, useSpot)`，如 latency/carbon）；②`RegisterMetric("latency", latencyMetric{})` 或 `NewStrategy(latencyMetric{}, costMetric{})`。候选收集与拉价由策略优化器内部完成，无需扩展者重复实现。optimizer 包按职责拆分：`optimizer.go`（`Optimizer` 接口 + `Get`/`Resolve` 解析入口）、`plan.go`（Launch/Plan）、`request.go`（Options/Request）、`meta.go`（Meta 接口 + defaultMeta）、`registry.go`（命名注册表）、`candidate.go`（候选 + 管道）、`metric.go`（Metric 接口 + 注册）、`lexicographic.go`（`lexicographicOptimizer` 字典序排序）、`strategy.go`（`NewStrategy`/`ParseStrategy`）、`cost.go`（cost 指标）、`time.go`（time 指标）。参见 `optimizer_ext_test.go`（外部包测试即扩展示例）与 [gpi-optimizer-extension.md](gpi-optimizer-extension.md)（完整扩展指南）。
 - **两种选择模式**：
   - **指定优化器**：`--optimizer cost|time`——单目标（cost 默认，候选集 → 按 `$/hr` 升序；time 按预估运行时长升序，输出 EST TIME 列）。
   - **指定优化策略**：`--optimizer <obj1>,<obj2>,...`——**字典序多目标**（参考 SkyPilot 组合优化思想），如 `cost,time`（先按成本、同价再看时间）、`time,cost`（先按时间、同时间再看成本），优先级可任意组合/重复。API 请求体 `optimizer` 字段同样生效（launch / service up）。
-- **目标（Objective）**：`cost`（`$/hr`）与 `time`（预估运行时长）。运行时估算：任务 `resources.time_sec` 显式指定则沿用（对标 SkyPilot `set_time_estimator`），否则按实例算力启发式（`est = 4h / (vcpus + GPU×16)`，基准 4 vcpu 无 GPU ≈ 1h，越强越快）。共享候选管道（收集 + 拉价预算 + 价格附件）只跑一次，仅排序键不同。
+- **指标（Metric）**：`cost`（`$/hr`）与 `time`（预估运行时长）。运行时估算：任务 `resources.time_sec` 显式指定则沿用（对标 SkyPilot `set_time_estimator`），否则按实例算力启发式（`est = 4h / (vcpus + GPU×16)`，基准 4 vcpu 无 GPU ≈ 1h，越强越快）。共享候选管道（收集 + 拉价预算 + 价格附件）只跑一次，仅排序键不同。
 - **价格拉取预算**：一个 region 可提供上千机型（如 aliyun cn-hangzhou ~1956）。优化器先按规格代理（vcpu 升序）预排并截断到 `maxPricedCandidates`（200），再对这批**并发**拉价（每云 `priceWorkers=8`），避免对全量候选逐个串行调 API。
 - **缺价回退与排序**：候选无价（cost=0）一律排在有价候选之后，绝不冒充"最便宜"；排序与展示统一用 `Launch.CostPerHour()`——spot 模式缺价按 on-demand×0.3 估算，on-demand 模式缺价按 spot×3 估算。
 - `Plan.Launches` 即 failover 顺序；可用 `--cloud`（逗号分隔）/ `-r REGION` / `--spot` / `--optimizer` 收窄候选或切换算法。未指定 `cloud` 时默认遍历**全部已注册云**做跨云比价。

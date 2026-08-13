@@ -1,12 +1,12 @@
 # Gpi
 
-```
-   _____   _____   _____ 
-  / ____| |  __ \ |_   _|
- | |  __  | |__) |   | |  
- | | |_ | |  ___/    | |  
- | |__| | | |      _| |_ 
-  \_____| |_|     |_____|
+```text
+           _____   _____   _____ 
+          / ____| |  __ \ |_   _|
+         | |  __  | |__) |  | |  
+         | | |_ | |  ___/   | |  
+         | |__| | | |      _| |_ 
+          \_____| |_|     |_____|
 
           Multi-Cloud Compute Scheduling
           =============================
@@ -233,7 +233,7 @@ kubectl -n gpi port-forward svc/gpi 8080:8080
 
 - [docs/gpi-architecture.md](docs/gpi-architecture.md) — 架构设计文档（版本号记录在内容中）
 - [docs/gpi-new-cloud.md](docs/gpi-new-cloud.md) — **接入新云指南**（如何新增一个云 Provider）
-- [docs/gpi-optimizer-extension.md](docs/gpi-optimizer-extension.md) — **扩展 placement optimizer 指南**（Objective / Optimizer / 策略）
+- [docs/gpi-optimizer-extension.md](docs/gpi-optimizer-extension.md) — **扩展 placement optimizer 指南**（Metric / Optimizer / 策略）
 - [docs/gpi-enhancements-over-skypilot.md](docs/gpi-enhancements-over-skypilot.md) — 相对 SkyPilot 的能力增强清单
 - `gpi --help` / `gpi <command> --help` — 命令帮助
 
