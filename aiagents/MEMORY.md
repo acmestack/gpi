@@ -1,8 +1,9 @@
 # Gpi 项目沟通记录（MEMORY）
 
-- **文档版本**：v20（2026-08-13）
+- **文档版本**：v21（2026-08-13）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v21（2026-08-13）**：补录 CLA workflow 修复 + 清理 useSpot 死参数。
 - **v20（2026-08-13）**：补录 example json 命名 + 删 Task.Time。
 - **v19（2026-08-13）**：补录 task 拆分 + examples yaml/json 分目录。
 - **v18（2026-08-13）**：补录 task 包 json tag 统一小驼峰 + Credentials omitempty。
@@ -231,6 +232,13 @@
 - **决策**：examples/json 命名——Task 结构体形式 `{scene}-obj.json`、YAML 字符串形式 `{scene}-yamlstr.json`（原 `-task`/`-launch` 改名）。
 - **决策**：删除死字段 `Task.Time`（无任何业务消费，仅 OrderFields 判空；SkyPilot 用 `resources.time_sec` 做运行时估算，gpi 已有 `Resources.TimeSec`）；同步删 swagger/openapi/架构文档的 `time` 字段。
 - **确认**：`config.AllowedClouds` 用途正常——`cfg.Cloud()` 在 `cli/launch.go:48,174` 被 `gpi launch/optimize` 未指定 `--cloud` 时用作默认云过滤。
+
+### 2026-08-13（CLA workflow 修复 · 清理 useSpot 死参数）
+
+- **决策**：CLA assistant 用 `contributor-assistant/github-action@v2.6.1`（维护中版本，替代已归档的 `cla-assistant/github-action@v2.1.3-beta`）；签名存同一仓库 `branch: cla`（acmestack/gpi，分支不可保护）；**不设 remote-org/repo**（避免 PAT 401）；`permissions` 需完整（actions/contents/pull-requests/statuses write）；`lock-pullrequest-aftermerge: false`；PR 模板**删除 CLA 段落**（避免与 bot 冲突）。
+- **决策**：`attachPrices`/`collectAndPrice` 的 `useSpot` 参数为**死参数**（attachPrices 总是同时拉 on-demand+spot 两份价格），已从签名与调用处移除。useSpot 真正生效点：`rankPlan` → `Metric.Rank(c, useSpot)`（cost.go 的 `CostPerHour(useSpot)`）→ `Launch.UseSpot` → provisioner。
+- **决策**：全部提交 GPG 签名（`user.signingkey=EE2178E827265FD0`，commit/tag 用 `-S`）。
+
 
 ## 关键设计决策速查
 
