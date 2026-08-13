@@ -14,6 +14,9 @@
 FROM golang:1.26 AS builder
 WORKDIR /src
 
+# gpi version; release workflows pass the git tag (e.g. v0.0.1).
+ARG VERSION=0.0.1
+
 # Cache dependencies first (layers change only when go.mod/go.sum do).
 COPY go.mod go.sum ./
 RUN go mod download
@@ -22,9 +25,10 @@ RUN go mod download
 # both binaries; go:generate needs the module source, so copy the tree after
 # the dependency layer.
 COPY . .
-RUN go generate ./internal/cloud/imports && \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/gpi ./cmd/gpi && \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/gpilet ./cmd/gpilet
+RUN V="${VERSION#v}" && \
+    go generate ./internal/cloud/imports && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/acmestack/gpi/internal/buildinfo.Version=${V}" -o /out/gpi ./cmd/gpi && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/acmestack/gpi/internal/buildinfo.Version=${V}" -o /out/gpilet ./cmd/gpilet
 
 # Stage 2: minimal runtime
 FROM scratch

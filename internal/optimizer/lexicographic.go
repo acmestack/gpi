@@ -58,7 +58,7 @@ func (s lexicographicOptimizer) Optimize(ctx context.Context, req *Request) (*Pl
 	}
 	opts := req.Options
 	if opts == nil {
-		opts = DefaultOptions()
+		opts = defaultOptions()
 	}
 	if opts.NumNodes <= 0 {
 		opts.NumNodes = 1

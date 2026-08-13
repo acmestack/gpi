@@ -45,3 +45,11 @@
 - tag 指向：发布时 tag 应指向包含该版本全部改动的最新提交；若发布后又有改动需纳入，用 `git tag -f` 移动并 `git push -f` 强制更新。
 - 推送：`git push cc <tag>`（必要时 `-f`）。推 tag 前同样需用户确认。
 - 发布自动化：GitHub 侧由 `.github/workflows/release.yml` 在 `v*` tag 时触发（构建二进制 + GHCR 镜像 + GitHub Release，body 取自 `.github/RELEASE_NOTES.md`）。
+
+## 版本号机制（version）
+
+- **版本号唯一来源是 git tag**，不要在源码中手写/重复维护。
+- `internal/buildinfo` 包的 `buildinfo.Version` 是唯一定义处，CLI（`gpi --version`）与 OpenAPI/Swagger（`internal/server/swagger.go` 的 `info.version`）都读取它，禁止各自硬编码。
+- `buildinfo.Version` 的默认值始终等于**最新已发布 tag（去掉 `v` 前缀）**；**每次发新版本时**：发布流程通过 ldflags 把当前 tag 注入二进制（release.yml 的 `-X github.com/acmestack/gpi/internal/buildinfo.Version=$VERSION`，Dockerfile 通过 `VERSION` build-arg + ldflags 注入），同时把 `internal/buildinfo/buildinfo.go` 的默认值改到新版本号。
+- 本地开发构建（`make build`）不带 ldflags，直接读默认值，无需额外处理。
+- 任何地方新增"版本号"展示/输出（CLI、API、文档、产物）都从 `internal/buildinfo` 读取，不要另写常量。

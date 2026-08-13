@@ -3,3 +3,4 @@
 /gpilet
 *.pem
 .DS_Store
+/vendor/

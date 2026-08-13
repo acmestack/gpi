@@ -212,6 +212,16 @@ func tagName(tagSet struct {
 	return ""
 }
 
+// Name returns the resource's "Name" tag value.
+func (v vpcItem) Name() string {
+	return tagName(v.TagSet)
+}
+
+// Name returns the resource's "Name" tag value.
+func (s subnetItem) Name() string {
+	return tagName(s.TagSet)
+}
+
 func (c *Client) StartInstance(ctx context.Context, id string) error {
 	return c.call(ctx, "StartInstances", map[string]string{"InstanceId.1": id}, nil)
 }
@@ -256,10 +266,37 @@ func (c *Client) AuthorizeSecurityGroup(ctx context.Context, groupID string, por
 	}, nil)
 }
 
+type securityGroupItem struct {
+	GroupId    string `xml:"groupId"`
+	GroupName  string `xml:"groupName"`
+	VpcId      string `xml:"vpcId"`
+	IpProtocol string `xml:"ipPermissions"`
+}
+
+type securityGroupsResp struct {
+	SecurityGroupInfo struct {
+		Item []securityGroupItem `xml:"item"`
+	} `xml:"securityGroupInfo"`
+}
+
+func (c *Client) DescribeSecurityGroups(ctx context.Context) ([]securityGroupItem, error) {
+	var out securityGroupsResp
+	if err := c.call(ctx, "DescribeSecurityGroups", nil, &out); err != nil {
+		return nil, err
+	}
+	return out.SecurityGroupInfo.Item, nil
+}
+
 type vpcItem struct {
 	VpcId     string `xml:"vpcId"`
 	CidrBlock string `xml:"cidrBlock"`
 	IsDefault bool   `xml:"isDefault"`
+	TagSet    struct {
+		Item []struct {
+			Key   string `xml:"key"`
+			Value string `xml:"value"`
+		} `xml:"item"`
+	} `xml:"tagSet"`
 }
 
 type vpcsResp struct {
@@ -348,6 +385,12 @@ type subnetItem struct {
 	DefaultForAz            bool   `xml:"defaultForAz"`
 	State                   string `xml:"state"`
 	AvailableIpAddressCount int    `xml:"availableIpAddressCount"`
+	TagSet                  struct {
+		Item []struct {
+			Key   string `xml:"key"`
+			Value string `xml:"value"`
+		} `xml:"item"`
+	} `xml:"tagSet"`
 }
 
 type subnetsResp struct {

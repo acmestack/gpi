@@ -73,7 +73,7 @@
   - `sqlite`（单文件库，`GPI_STATE_SQLITE` 指定路径）；
   - `mysql`（`GPI_STATE_MYSQL_DSN` 指定数据源）；
   - `redis`（`GPI_STATE_REDIS_ADDR/PASSWORD/DB` 指定连接，每类数据一个 key：`gpi:clusters`/`gpi:services`/`gpi:jobs`/`gpi:cluster_yaml`/`gpi:cluster_history`/`gpi:cluster_events`/`gpi:config`/`gpi:tokens`）。
-  - sqlite/mysql 按实体建表（`clusters`/`services`/`jobs`/`cluster_yaml`/`cluster_history`/`cluster_events`/`config`/`service_account_tokens`，对齐 SkyPilot 表结构）：常用字段抽为显式索引列、完整实体存 `data` JSON 列；旧单表 `gpi_state` 自动迁移。便于部署到共享数据库、多实例并发读写。
+  - sqlite/mysql 按实体建表（`clusters`/`services`/`jobs`/`cluster_yaml`/`cluster_history`/`cluster_events`/`config`/`service_account_tokens`，对齐 SkyPilot 表结构）：常用字段抽为显式索引列、完整实体存 `data` JSON 列。便于部署到共享数据库、多实例并发读写。
 
 ## 12. API 令牌认证（service_account_tokens）
 

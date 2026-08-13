@@ -1,8 +1,11 @@
 # Gpi 项目沟通记录（MEMORY）
 
-- **文档版本**：v10（2026-08-13）
+- **文档版本**：v13（2026-08-14）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v13（2026-08-14）**：补录版本号机制——版本号唯一来源 git tag，`internal/buildinfo.Version` 唯一定义处，release 时 ldflags/build-arg 注入。
+- **v12（2026-08-13）**：补录 §9.0 数据库表结构整理；移除旧单表迁移（代码/测试/文档/历史版本记录全量清理）。
+- **v11（2026-08-13）**：补录 config 架构决策——云专项配置下沉云包、`internal/config` 云无关、两个 config 区分。
 - **v10（2026-08-13）**：补录 docs 版本记录移到文档末尾。
 - **v9（2026-08-13）**：补录 lexicographicOptimizer 独立成 lexicographic.go。
 - **v8（2026-08-13）**：补录 Objective→Metric、strategyOptimizer→lexicographicOptimizer 改名。
@@ -21,7 +24,6 @@
 - 确定项目：参考 SkyPilot 模式，用 Go 重写实现多云算力调度，对标 SkyPilot 的 launcher / optimizer / SkyServe / Sky Jobs / API server。
 - 确定位置 `opencode/gpi`（后更名），module `github.com/acmestack/gpi`，CLI 名 `gpi`，首个云 aliyun，CLI+Server 双形态。
 - 完成 v1 全部功能骨架并通过测试。
-- 全项目更名 `cloudpilot → cspilot`、`cpctl → csp`（后再次更名 gpi）。
 
 ### 2026-08-08（AWS Provider · Ray 集群）
 
@@ -41,7 +43,7 @@
 ### 2026-08-08（平台 · 表结构 · 认证 · Middleware · 更名 gpi）
 
 - 明确平台支持 Linux/macOS，移除 Windows。
-- SQL 后端按实体拆表（clusters/services/jobs），支持旧 `gpi_state` 单表迁移。
+- SQL 后端按实体拆表（clusters/services/jobs）。
 - 补齐集群快照/历史/事件（cluster_yaml/history/events）。
 - 补齐 config 表与 service_account_tokens（--require-auth Bearer 认证）。
 - Middleware 抽象 + OpenAPI/Swagger（--docs）。
@@ -160,6 +162,22 @@
 
 - **决策**：docs 长期文档的版本变更记录（changelog）统一移到**文档末尾** `## 版本记录` 区块（vN 降序），顶部只保留版本号 + 元信息 + 正文，避免 changelog 影响重点；同步更新 AGENTS.md 的 docs 约定。
 
+### 2026-08-13（config 架构：云专项配置下沉 + 两个 config 区分）
+
+- **背景**：此前在 `internal/config` 用强类型 `AWS`/`Aliyun` 结构体 + `AWSConfig()`/`AliyunConfig()` 访问器承载云网络复用配置，新增云需改 `internal/config`（加结构体/字段/overlay/访问器），破坏"新云只增 1 包"承诺。- **决策①（云专项配置下沉）**：`internal/config` 改为**云无关**——只留通用字段（`allowed_clouds`/`region`/`zone`/`use_spot`）+ `Section(name, out)` 通用解码；层叠合并从字段级改为 **yaml 节点级**（`parseNode` + `mergeNode`，项目覆盖用户，嵌套 mapping 递归合并）。
+- **决策②（云配置放各云包）**：每个云在**自己的包**定义 `Config` struct（`internal/cloud/aws/config.go`、`internal/cloud/aliyun/config.go`）+ `LoadConfig()`（`config.Load().Section(CloudName, &c)`）。新增云**零改动** `internal/config`。
+- **决策③（Provider 接口不加 Config()）**：Go 接口方法无法为不同云返回各自类型（只能 `any` 丢类型安全），且云段只有 provider 自己消费；不采纳"接口加 Config()"方案。
+- **决策④（一次解码）**：`RunInstances` 里 `cfg := LoadConfig()` 只解码一次，`vpcFor`/`securityGroupFor`/`subnetsFor`（aws）、`vswitchesFor`（aliyun）改为接收 `spec *cloud.LaunchSpec` + `cfg *Config` 参数（cfg 在 client 之后），消除重复 yaml 解码。
+- **决策⑤（两个 config 区分，只文档区分不改代码）**：`internal/config` = **文件配置**（单机客户端，启动偏好）；`internal/state` 的 `config` 表 = **运行时配置**（服务端多实例共享 KV，目前零生产消费者，测试 `autostop` 占位）。`config.Load()` **不读** state 表。新增架构文档 §9.1.1 对比表 + 一句话记忆，代码命名不动。
+- **改动文件**：`internal/config/config.go`（云无关化 + Section/mergeNode）、`internal/config/config_test.go`、`internal/cloud/aws/config.go`（新）、`internal/cloud/aliyun/config.go`（新）、`internal/cloud/aws/provider.go`、`internal/cloud/aliyun/provider.go`、`internal/cloud/aws/provider_config_test.go`、`docs/gpi-architecture.md`（§9.1.1，升 v54）、`docs/gpi-new-cloud.md`（config.go 步骤，升 v13）。
+- 验证：`go build ./... && go vet ./... && go test ./...` 全绿。
+
+### 2026-08-13（数据库表结构整理 · 移除旧单表迁移）
+
+- 架构文档新增 **§9.0 数据库表结构（sqlite/mysql）**：全部 8 张表（`clusters`/`services`/`jobs`/`cluster_yaml`/`cluster_history`/`cluster_events`/`config`/`service_account_tokens`）的列/类型/约束/主键对比表 + `ensureTables` 完整 DDL，附 file/redis 后端映射说明。
+- **移除旧版单表迁移（全量）**：`internal/state/sql.go` 删除 `migrateLegacyTable`（`ensureTables` 不再调用），删除 `state_test.go` 的 `TestMigrateLegacyTable` 与 `database/sql` 导入；文档正文、§9.0、历史版本记录（v15/v9）、`gpi-enhancements-over-skypilot.md` §11、MEMORY 速查表均清理相关描述。
+- 架构文档升 v55；`go build/vet/test ./internal/state` 通过。
+
 ## 关键设计决策速查
 
 | 决策 | 结论 |
@@ -178,3 +196,7 @@
 | License / CLA | MIT；AcmeStack CLA（`.github/CLA.md` + cla-assistant） |
 | 沟通记录 | 每次沟通后追加到 `aiagents/MEMORY.md` |
 | 平台 | Linux/macOS；无 Windows |
+| 用户配置文件 | `$GPI_HOME/config.yaml`（默认 `~/.gpi/config.yaml`）+ 项目 `.gpi.yaml` 层叠（项目覆盖用户） |
+| 云专项配置 | 各云自己包内定义 `Config` struct + `LoadConfig()`（`config.Load().Section(CloudName, &c)`），`internal/config` 云无关、新云零改动 |
+| 两个 config | `internal/config`=文件配置（客户端启动偏好）；`internal/state` 的 `config` 表=运行时 KV（服务端共享，零消费者）。config.Load() 不读 state 表 |
+| 数据库表结构 | 8 张表按实体拆分（PK + 索引列 + data JSON 列），完整结构见架构文档 §9.0 |

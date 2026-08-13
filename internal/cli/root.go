@@ -7,11 +7,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/acmestack/gpi/internal/buildinfo"
 	"github.com/acmestack/gpi/internal/backend"
 	"github.com/acmestack/gpi/internal/state"
 )
-
-const version = "0.1.0"
 
 // Execute runs the gpi CLI and exits with a non-zero status on error.
 func Execute() {
@@ -27,7 +26,7 @@ func NewRootCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:     "gpi",
 		Short:   "gpi: multi-cloud compute scheduling",
-		Version: version,
+		Version: buildinfo.Version,
 	}
 	// `gpi --version` prints the ASCII-art banner followed by the version.
 	root.SetVersionTemplate(fmt.Sprintf("%s\ngpi version {{.Version}}\n", Banner))

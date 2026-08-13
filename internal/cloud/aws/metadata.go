@@ -182,7 +182,7 @@ func (p Provider) metadataClient(region string) (*Client, error) {
 // both cloud.Provider and catalog.Source; cloud.Register auto-registers the
 // metadata source when the provider satisfies it.
 
-func (p Provider) Cloud() string { return "aws" }
+func (p Provider) Cloud() string { return CloudName }
 
 func (p Provider) SpecsTTL() time.Duration { return specsTTL }
 
@@ -206,7 +206,7 @@ func (p Provider) FetchSpecs(ctx context.Context, region string) ([]*catalog.Ins
 		if !offered[it.InstanceType] {
 			continue
 		}
-		out = append(out, toSpec("aws", region, it))
+		out = append(out, toSpec(CloudName, region, it))
 	}
 	return out, nil
 }

@@ -9,6 +9,10 @@ import (
 	"github.com/acmestack/gpi/internal/cloud"
 )
 
+// CloudName is the canonical identifier for this provider, used by Name(),
+// Cloud() and the cloud registry.
+const CloudName = "aws"
+
 // Provider implements cloud.Provider for AWS EC2. It may be bound to explicit
 // credentials via NewProvider; otherwise it loads env/disk creds.
 type Provider struct {
@@ -21,7 +25,7 @@ func NewProvider(creds *Credentials) Provider {
 	return Provider{creds: creds}
 }
 
-func (Provider) Name() string { return "aws" }
+func (Provider) Name() string { return CloudName }
 
 func (p Provider) client() (*Client, error) {
 	if p.creds != nil {
@@ -46,6 +50,8 @@ func (p Provider) RunInstances(ctx context.Context, spec *cloud.LaunchSpec) ([]*
 	if spec.Region == "" {
 		spec.Region = client.region
 	}
+	// Decode the aws config section once; network helpers take it as a param.
+	cfg := LoadConfig()
 
 	// Like SkyPilot, first look up existing instances of this cluster: reuse
 	// running ones, restart stopped ones, and only create when none fit.
@@ -100,29 +106,17 @@ func (p Provider) RunInstances(ctx context.Context, spec *cloud.LaunchSpec) ([]*
 		spec.ImageID = imageID
 	}
 	if spec.SecurityGroupID == "" {
-		vpcID, err := p.vpcFor(ctx, client, spec.Region, spec.VPCID)
-		if err != nil {
+		if err := p.vpcFor(ctx, client, cfg, spec); err != nil {
 			return nil, err
 		}
-		spec.VPCID = vpcID
-		groupID, err := client.CreateSecurityGroup(ctx, "gpi-sg", "gpi managed security group", vpcID)
-		if err != nil {
+		if err := p.securityGroupFor(ctx, client, cfg, spec); err != nil {
 			return nil, err
 		}
-		for _, rule := range []struct{ from, to int }{
-			{22, 22},
-			{1024, 65535},
-		} {
-			if err := client.AuthorizeSecurityGroup(ctx, groupID, rule.from, rule.to, "tcp"); err != nil {
-				return nil, err
-			}
-		}
-		spec.SecurityGroupID = groupID
 	}
 
 	// Collect candidate subnets (default VPC's existing ones, else create a
 	// fresh network). Try each in turn; some AZs may lack capacity.
-	subnets, err := p.subnetsFor(ctx, client, spec.Region, spec.VPCID, spec.Zone)
+	subnets, err := p.subnetsFor(ctx, client, cfg, spec)
 	if err != nil {
 		return nil, err
 	}
@@ -173,31 +167,96 @@ func awsRetryable(err error) bool {
 	return false
 }
 
-// vpcFor returns the VPC to use: the caller-specified one, or the account's
-// default VPC, creating a fresh VPC only when none exists.
-func (p Provider) vpcFor(ctx context.Context, client *Client, region, vpcID string) (string, error) {
-	if vpcID != "" {
-		return vpcID, nil
+// vpcFor resolves the VPC to use into spec.VPCID: the caller-specified one, a
+// VPC named in config, the account's default VPC, or a freshly created VPC when
+// none exist.
+func (p Provider) vpcFor(ctx context.Context, client *Client, cfg *Config, spec *cloud.LaunchSpec) error {
+	if spec.VPCID != "" {
+		return nil
 	}
 	vpcs, err := client.DescribeVpcs(ctx)
 	if err != nil {
-		return "", err
+		return err
+	}
+	if cfg != nil {
+		if id := matchVPCByName(vpcs, cfg.VPCNames); id != "" {
+			spec.VPCID = id
+			return nil
+		}
 	}
 	for _, vpc := range vpcs {
 		if vpc.IsDefault {
-			return vpc.VpcId, nil
+			spec.VPCID = vpc.VpcId
+			return nil
 		}
 	}
-	subnets, err := p.createVpcNetwork(ctx, client, region, "")
+	subnets, err := p.createVpcNetwork(ctx, client, spec.Region, "")
 	if err != nil {
-		return "", err
+		return err
 	}
-	return subnets[0].VpcId, nil
+	spec.VPCID = subnets[0].VpcId
+	return nil
 }
 
-// subnetsFor returns candidate subnets: the default VPC's existing subnets
-// (preferring the requested zone), or a freshly created network when none.
-func (p Provider) subnetsFor(ctx context.Context, client *Client, region, vpcID, zone string) ([]subnetItem, error) {
+// matchVPCByName returns the id of the first VPC whose id or Name tag is in
+// want, or "" when none match.
+func matchVPCByName(vpcs []vpcItem, want []string) string {
+	for _, w := range want {
+		for _, vpc := range vpcs {
+			if vpc.VpcId == w || vpc.Name() == w {
+				return vpc.VpcId
+			}
+		}
+	}
+	return ""
+}
+
+// securityGroupFor resolves the security group into spec.SecurityGroupID: one
+// named in config (by name or id), or a freshly created "gpi-sg" with standard
+// rules.
+func (p Provider) securityGroupFor(ctx context.Context, client *Client, cfg *Config, spec *cloud.LaunchSpec) error {
+	if cfg != nil && cfg.SecurityGroupName != "" {
+		groups, err := client.DescribeSecurityGroups(ctx)
+		if err != nil {
+			return err
+		}
+		if id := matchSecurityGroupByID(groups, cfg.SecurityGroupName); id != "" {
+			spec.SecurityGroupID = id
+			return nil
+		}
+	}
+	groupID, err := client.CreateSecurityGroup(ctx, "gpi-sg", "gpi managed security group", spec.VPCID)
+	if err != nil {
+		return err
+	}
+	for _, rule := range []struct{ from, to int }{
+		{22, 22},
+		{1024, 65535},
+	} {
+		if err := client.AuthorizeSecurityGroup(ctx, groupID, rule.from, rule.to, "tcp"); err != nil {
+			return err
+		}
+	}
+	spec.SecurityGroupID = groupID
+	return nil
+}
+
+// matchSecurityGroupByID returns the id of the first security group whose id
+// or name matches want, or "" when none match.
+func matchSecurityGroupByID(groups []securityGroupItem, want string) string {
+	for _, g := range groups {
+		if g.GroupName == want || g.GroupId == want {
+			return g.GroupId
+		}
+	}
+	return ""
+}
+
+// subnetsFor returns candidate subnets for the launch spec: subnets named in
+// config, the default VPC's existing subnets (preferring the requested zone),
+// or a freshly created network when none.
+func (p Provider) subnetsFor(ctx context.Context, client *Client, cfg *Config, spec *cloud.LaunchSpec) ([]subnetItem, error) {
+	vpcID := spec.VPCID
 	if vpcID == "" {
 		vpcs, err := client.DescribeVpcs(ctx)
 		if err != nil {
@@ -215,12 +274,18 @@ func (p Provider) subnetsFor(ctx context.Context, client *Client, region, vpcID,
 		if err != nil {
 			return nil, err
 		}
+		// Prefer subnets named in config (by Name tag or id).
+		if cfg != nil && len(cfg.SubnetNames) > 0 {
+			if wanted := matchSubnetsByName(subnets, cfg.SubnetNames); len(wanted) > 0 {
+				return wanted, nil
+			}
+		}
 		if len(subnets) > 0 {
 			// Prefer the requested zone, then return all as fallbacks.
-			if zone != "" {
+			if spec.Zone != "" {
 				var zoned []subnetItem
 				for _, s := range subnets {
-					if s.AvailabilityZone == zone {
+					if s.AvailabilityZone == spec.Zone {
 						zoned = append(zoned, s)
 					}
 				}
@@ -231,7 +296,22 @@ func (p Provider) subnetsFor(ctx context.Context, client *Client, region, vpcID,
 			return subnets, nil
 		}
 	}
-	return p.createVpcNetwork(ctx, client, region, zone)
+	return p.createVpcNetwork(ctx, client, spec.Region, spec.Zone)
+}
+
+// matchSubnetsByName returns the subnets whose id or Name tag is in want, in
+// the configured order.
+func matchSubnetsByName(subnets []subnetItem, want []string) []subnetItem {
+	var out []subnetItem
+	for _, w := range want {
+		for _, s := range subnets {
+			if s.SubnetId == w || s.Name() == w {
+				out = append(out, s)
+				break
+			}
+		}
+	}
+	return out
 }
 
 // createVpcNetwork creates a VPC + IGW + route table + subnet and returns the
@@ -480,7 +560,7 @@ func (p Provider) GetImage(ctx context.Context, region, platform string) (string
 
 func init() {
 	cloud.Register(Provider{})
-	cloud.RegisterFactory("aws", func(creds *cloud.Credentials) (cloud.Provider, error) {
+	cloud.RegisterFactory(CloudName, func(creds *cloud.Credentials) (cloud.Provider, error) {
 		return NewProvider(&Credentials{
 			AccessKeyID:     creds.AccessKeyID,
 			SecretAccessKey: creds.SecretAccessKey,

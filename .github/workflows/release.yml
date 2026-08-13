@@ -33,10 +33,11 @@ jobs:
       - name: Build
         run: |
           SUFFIX="${{ matrix.target.os }}-${{ matrix.target.arch }}"
+          VERSION="${GITHUB_REF_NAME#v}"
           GOOS=${{ matrix.target.os }} GOARCH=${{ matrix.target.arch }} CGO_ENABLED=0 \
-            go build -ldflags "-s -w" -o gpi-$SUFFIX ./cmd/gpi
+            go build -ldflags "-s -w -X github.com/acmestack/gpi/internal/buildinfo.Version=$VERSION" -o gpi-$SUFFIX ./cmd/gpi
           GOOS=${{ matrix.target.os }} GOARCH=${{ matrix.target.arch }} CGO_ENABLED=0 \
-            go build -ldflags "-s -w" -o gpilet-$SUFFIX ./cmd/gpilet
+            go build -ldflags "-s -w -X github.com/acmestack/gpi/internal/buildinfo.Version=$VERSION" -o gpilet-$SUFFIX ./cmd/gpilet
 
       - name: Compress
         run: |
@@ -80,6 +81,8 @@ jobs:
           file: ./Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            VERSION=${{ github.ref_name }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/gpi:${{ github.ref_name }}
             ghcr.io/${{ github.repository_owner }}/gpi:latest

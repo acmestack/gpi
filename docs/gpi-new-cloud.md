@@ -1,6 +1,6 @@
 # 接入新云指南（How to Add a New Cloud）
 
-- **文档版本**：v12（2026-08-09）
+- **文档版本**：v13（2026-08-13）
 - **适用项目**：Gpi（`github.com/acmestack/gpi`）
 
 ## 总览：一个云 = 一个包 + 一个 struct
@@ -70,6 +70,32 @@ func init() {
 }
 ```
 
+- **`config.go`（可选）**：本云的**专项配置**（网络复用等）由本包自己定义，放这里——**`internal/config` 是云无关的**，通过 `Section(cloudName, &cfg)` 解码：
+
+```go
+package foo
+
+import "github.com/acmestack/gpi/internal/config"
+
+// Config is the "foo" section of the gpi user config.
+type Config struct {
+	VPCID string `yaml:"vpc_id"`
+	// ...
+}
+
+// LoadConfig returns the merged "foo" config section, or nil when unset.
+func LoadConfig() *Config {
+	var c Config
+	if err := config.Load().Section(CloudName, &c); err != nil {
+		return nil
+	}
+	return &c
+}
+```
+
+  - `CloudName` 常量已在 `provider.go` 定义（`const CloudName = "foo"`），`Section` 的键与用户配置文件里的云段名一致。
+  - provider 内部需要时直接调用 `LoadConfig()`；**新增云不需要改 `internal/config` 任何代码**。
+
 - **`client.go` / `sign.go`**：云 API 的请求签名与调用（aliyun 用 HMAC-SHA1，aws 用 SigV4，新云按各自协议实现）。
 - **`pricing.go`**：云 API 的价格查询方法（`DescribeOnDemandPrice` / `DescribeSpotPriceHistory`），由 `Provider.FetchPrices` 调用。
 
@@ -103,6 +129,7 @@ gpi optimize examples/train.yaml --cloud foo --region region-a
 - **为什么要有聚合包 `internal/cloud/imports`？** Go 中包必须被 import 其 `init()` 才会执行，无法免 import。聚合包把"所有云的空白导入"集中到一个文件，且由 `gen.go` 自动生成，挂在 `make build` 的构建前置——新云只需建包，**构建时自动带上，零手动操作**。
 - **Optimizer 如何消费元数据？** 内置 `cost`/`time` 优化器及 `cost,time` 等策略经 `optimizer.Meta` 访问器读取规格并匹配任务资源，再对候选**并发拉价**（候选截断 + 缺价回退，见架构文档）。新云实现 `Provider.FetchSpecs/FetchPrices` 后自动被覆盖，无需改动 optimizer。
 - **凭据来源**：provider 的 `NewClient` 负责从 env（`FOO_ACCESS_KEY_ID`/`FOO_SECRET` 或云默认配置文件）加载；任务级 `credentials:` 通过 `cloud.RegisterFactory` 注入。
+- **云专项配置放在哪？** 在**每个云自己的包**里（`internal/cloud/<cloud>/config.go`），`internal/config` 只做云无关的加载/层叠合并。这样新增云**不改 `internal/config`**——正是 `cloud.Provider` 接口不暴露 `Config()` 的原因：接口方法没法为不同云返回各自类型（只能 `any`，丢类型安全），而云段本来就只有 provider 自己消费。
 
 ## 演进方向
 
@@ -111,6 +138,7 @@ gpi optimize examples/train.yaml --cloud foo --region region-a
 
 ## 版本记录
 
+- **v13（2026-08-13）**：新增云专项配置（`config.go` + `config.Load().Section(CloudName, &cfg)`）；明确 `internal/config` 云无关、接口不加 `Config()`。
 - **v12（2026-08-09）**：移除文档内"变更规则"行（规则统一到 `AGENTS.md`）；补齐版本变更记录区。
 - **v11（2026-08-09）**：`--optimizer` 支持策略（`cost,time` 等）；内置优化器描述更新为 cost/time。
 - **v10（2026-08-09）**：新增内置 `time` 优化器；优化器消费元数据说明补充。

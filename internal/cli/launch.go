@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/acmestack/gpi/internal/cloud/catalog"
+	"github.com/acmestack/gpi/internal/config"
 	"github.com/acmestack/gpi/internal/optimizer"
 	"github.com/acmestack/gpi/internal/task"
 )
@@ -39,6 +40,21 @@ func newLaunchCommand() *cobra.Command {
 			}
 			if numNodes > 0 {
 				ts.NumNodes = numNodes
+			}
+			// CLI flags override config: apply config defaults to any flag the
+			// user did not explicitly set (flag > config).
+			cfg := config.Load()
+			if cloudFlag == "" {
+				cloudFlag = cfg.Cloud()
+			}
+			if region == "" {
+				region = cfg.Region()
+			}
+			if zone == "" && !cmd.Flags().Changed("zone") {
+				zone = cfg.Zone()
+			}
+			if !cmd.Flags().Changed("spot") && cfg.UseSpot() {
+				useSpot = true
 			}
 
 			opt, err := selectOptimizer(optimizerName)
@@ -152,6 +168,19 @@ func newOptimizeCommand() *cobra.Command {
 			}
 			if numNodes > 0 {
 				ts.NumNodes = numNodes
+			}
+			cfg := config.Load()
+			if cloudFlag == "" {
+				cloudFlag = cfg.Cloud()
+			}
+			if region == "" {
+				region = cfg.Region()
+			}
+			if zone == "" && !cmd.Flags().Changed("zone") {
+				zone = cfg.Zone()
+			}
+			if !cmd.Flags().Changed("spot") && cfg.UseSpot() {
+				useSpot = true
 			}
 			opt, err := selectOptimizer(optimizerName)
 			if err != nil {

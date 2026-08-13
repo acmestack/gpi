@@ -273,7 +273,7 @@
   "info": {
     "description": "gpi multi-cloud compute scheduling REST API. Authenticate with `Authorization: Bearer \u003ctoken\u003e` when the server runs with --require-auth.",
     "title": "gpi API",
-    "version": "0.1.0"
+    "version": "0.0.1"
   },
   "openapi": "3.0.3",
   "paths": {
