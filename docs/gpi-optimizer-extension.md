@@ -1,7 +1,10 @@
 # Optimizer 扩展指南（Extending the Placement Optimizer）
 
-- **文档版本**：v6（2026-08-13）
+- **文档版本**：v9（2026-08-13）
 - **适用项目**：Gpi（`github.com/acmestack/gpi`）
+- **v9（2026-08-13）**：`lexicographicOptimizer` 独立为 `lexicographic.go`（算法实现），`strategy.go` 只留策略构造（`NewStrategy`/`ParseStrategy`）+ 内置注册。
+- **v8（2026-08-13）**：命名调整——`Objective` → `Metric`（打分指标），`costObjective`/`timeObjective` → `costMetric`/`timeMetric`，`RegisterObjective` → `RegisterMetric`，`objective.go` → `metric.go`；`strategyOptimizer` → `lexicographicOptimizer`（字典序多指标排序实现），对外 `NewStrategy`/`ParseStrategy` 保留。
+- **v7（2026-08-13）**：补充"打分之后：分数到底怎么用"小节——分数向量 → 字典序排序 → 截断 → Plan 的机制，含 `cost,latency` 与 `latency,cost` 的具体排序演示，以及 Optimizer 场景下分数的自由使用。
 - **v6（2026-08-13）**：修正文件职责表以匹配当前 optimizer 包结构——`optimizer.go`（接口+Get/Resolve）、`plan.go`、`request.go`、`meta.go`（含 `newCacheMeta`）、`registry.go`、`match.go`；移除已合并的 `meta_adapter.go`。
 - **v5（2026-08-09）**：新增"Objective 与 Optimizer 的差异"小节（打分维度 vs 决策整体，含选型指引）。
 - **v4（2026-08-09）**：移除文档内"变更规则"行（该规则统一到项目根 `AGENTS.md`）；补齐版本变更记录区。
@@ -14,7 +17,7 @@
 本指南完整讲解 gpi 的 placement optimizer（`internal/optimizer`）如何扩展。它回答三类问题：
 
 1. **怎么用内置优化器/策略**（不写代码，改 CLI/API 参数）。
-2. **怎么加一个新的优化目标**（实现 `Objective`，如 latency / carbon / budget），融入 `cost,time` 这类策略。
+2. **怎么加一个新的优化目标**（实现 `Metric`，如 latency / carbon / budget），融入 `cost,time` 这类策略。
 3. **怎么写一个完全自定义的 Optimizer**（替换整个排序逻辑）。
 
 读完本指南应能独立实现并注册一个自定义优化器，并为其编写测试。
@@ -33,10 +36,11 @@ optimizer 包按职责分文件：
 | `meta.go` | `Meta` 接口 + 共享 `defaultMeta`（含 `newCacheMeta` 适配） + `SetDefaultMeta`/`PricesForced` |
 | `registry.go` | 命名优化器注册表（`Register`/`Names`/`Default`/`DefaultName`） |
 | `candidate.go` | `Candidate`（可排序的候选单元）+ 内部候选管道（`collectCandidates`/`attachPrices`，未导出） |
-| `objective.go` | `Objective` 接口 + `RegisterObjective`/`ObjectiveNames`（目标注册表） |
-| `strategy.go` | `strategyOptimizer`：多目标字典序排序 + `NewStrategy`/`ParseStrategy` + 内置 `cost`/`time` 注册 |
-| `cost.go` | **cost 目标的归属**：`costObjective` 定义 + 显式入口 `OptimizeByCost`/`OptimizeByCostContext` + 别名 `Optimize`/`OptimizeWithContext` |
-| `time.go` | **time 目标的归属**：`timeObjective` 定义 + 显式入口 `OptimizeByTime`/`OptimizeByTimeContext` + `estimateRuntime` 启发式 |
+| `metric.go` | `Metric` 接口 + `RegisterMetric`/`MetricNames`（指标注册表） |
+| `lexicographic.go` | `lexicographicOptimizer`：按指标优先级字典序排序的实现（`Name`/`Optimize`） |
+| `strategy.go` | 策略构造：`NewStrategy`/`ParseStrategy` + 内置 `cost`/`time` 注册 |
+| `cost.go` | **cost 指标的归属**：`costMetric` 定义 + 显式入口 `OptimizeByCost`/`OptimizeByCostContext` + 别名 `Optimize`/`OptimizeWithContext` |
+| `time.go` | **time 指标的归属**：`timeMetric` 定义 + 显式入口 `OptimizeByTime`/`OptimizeByTimeContext` + `estimateRuntime` 启发式 |
 | `match.go` | `matchesResources`：候选资源匹配过滤 |
 
 ### 一次优化发生了什么
@@ -45,7 +49,7 @@ optimizer 包按职责分文件：
 Request{Resources, Options}
         │
         ▼
-strategyOptimizer.Optimize ──► collectCandidates()   // 1. 匹配资源需求，收集可行机型
+lexicographicOptimizer.Optimize ──► collectCandidates()   // 1. 匹配资源需求，收集可行机型
         │                      attachPrices()         // 2. 并发拉实时价（含预算截断）
         │                      (time目标→预计算 estTime)
         │                      o.Rank(c, useSpot)     // 3. 每个目标打分
@@ -54,20 +58,20 @@ strategyOptimizer.Optimize ──► collectCandidates()   // 1. 匹配资源需
 Plan{Launches[] *Launch}       // 5. failover 顺序 + 总价/总时长
 ```
 
-关键点：**候选收集与拉价是共享的、包内私有的**；扩展者不需要重写它们，只需要提供"怎么给一个候选打分"（`Objective`），或"整个排序怎么做"（自定义 `Optimizer`）。
+关键点：**候选收集与拉价是共享的、包内私有的**；扩展者不需要重写它们，只需要提供"怎么给一个候选打分"（`Metric`），或"整个排序怎么做"（自定义 `Optimizer`）。
 
 ### 两种扩展层次
 
 | 层次 | 扩展点 | 介入程度 | 适用 |
 |------|--------|---------|------|
-| 组合式 | 实现 `Objective` + `RegisterObjective`/`NewStrategy` | 只需打分 | 大多数场景（latency/carbon/budget 等新目标） |
+| 组合式 | 实现 `Metric` + `RegisterMetric`/`NewStrategy` | 只需打分 | 大多数场景（latency/carbon/budget 等新指标） |
 | 完全式 | 实现 `Optimizer` + `Register` | 接管整个 Optimize | 需要自定义候选管道/搜索逻辑（如 ILP、遗传算法） |
 
-### Objective 与 Optimizer 的差异
+### Metric 与 Optimizer 的差异
 
 两者经常被混淆，本质是"打分的维度"与"决策的整体"的区别：
 
-| | `Objective` | `Optimizer` |
+| | `Metric` | `Optimizer` |
 |---|---|---|
 | 回答的问题 | **怎么给一个候选打分**（一个维度） | **怎么排出一份 Plan**（整个决策） |
 | 粒度 | 一个候选一行打分值 | 候选集 → 排序 → 截断 → Plan |
@@ -77,12 +81,55 @@ Plan{Launches[] *Launch}       // 5. failover 顺序 + 总价/总时长
 | 是否接触元数据 | 否（只读 `Candidate` 上已附好的数据） | 是（可读 `Meta`/元数据，控制收集与拉价） |
 | 典型扩展 | latency / carbon / budget / 时延 | ILP / 遗传算法 / 带约束搜索 |
 
-**什么时候用 Objective，什么时候用 Optimizer？**
+**什么时候用 Metric，什么时候用 Optimizer？**
 
-- 你的扩展本质是"**新增一个考虑因素/打分维度**"（如时延、碳排、预算上限）→ **实现 `Objective`**。候选收集、拉价、无价沉底、字典序排序全部由 `strategyOptimizer` 处理，你只需 `Rank` 返回一个数，零样板代码。
+- 你的扩展本质是"**新增一个考虑因素/打分维度**"（如时延、碳排、预算上限）→ **实现 `Metric`**。候选收集、拉价、无价沉底、字典序排序全部由 `lexicographicOptimizer` 处理，你只需 `Rank` 返回一个数，零样板代码。
 - 你的扩展本质是"**换一种决策方式**"（无法用若干目标打分表达，例如组合优化、带约束搜索、遗传算法）→ **实现 `Optimizer`**，接管整个 `Optimize`，但需要自己处理候选收集/拉价（或基于 `Optimize` 的结果二次处理）。
 
-> 简单记忆：**Objective 是"一个打分"，Optimizer 是"一整套决策"**。想加维度用 Objective，想换算法用 Optimizer。
+> 简单记忆：**Metric 是"一个打分"，Optimizer 是"一整套决策"**。想加维度用 Metric，想换算法用 Optimizer。
+
+### 打分之后：分数到底怎么用？
+
+`Metric.Rank` 返回的分数**不会直接变成最终结果**——它只是进入排序的一个键。`lexicographicOptimizer` 内部：
+
+1. **给每个候选在每个目标上各算一个分数**，得到"分数向量"：
+   ```go
+   // 每个 candidate 对应一个 []float64，长度 = 目标个数
+   scores[i][j] = metrics[j].Rank(cand[i], useSpot)
+   ```
+2. **字典序排序**：先按第 1 个目标（首要）的分数升序；分数相同的候选，再按第 2 个目标的分数升序……依此类推。`sort.SliceStable` 保证同分时保持原有稳定顺序。**无价候选（`Priced()==false`）永远沉底**，不参与排名。
+3. **截断**：排序后只保留 `Options.MaxCandidates` 个（默认 10）。
+4. **组装 Plan**：每个候选转成 `Launch`，`Order` 即名次（1 = 首选），连同总价/总时长输出，作为 failover 顺序。
+
+**分数本身不进入 Plan**——`Launch` 里存的是 `OnDemandCost`/`SpotCost`/`EstimatedTime` 等**原始数据**，供展示和后续 launch 使用；你的 `Rank` 返回值只在排序那一步起作用。
+
+**示例：`--optimizer cost,latency`（策略：先看成本，成本相同再看时延）**
+
+三个候选打分如下（假定实价已 attach）：
+
+| 候选 | cost 分（$/hr） | latency 分（ms） | 排序结果 |
+|------|----------------|------------------|----------|
+| `a.g6.large` | 0.049 | 180 | 1（cost 最小） |
+| `b.m5.large` | 0.096 | 30 | 3（cost 次小，latency 无用武之地） |
+| `c.c7.large` | 0.049 | 55 | 2（与 a 同 cost → 比 latency：55 > 30） |
+
+- 首要目标 cost 升序：`a`（0.049）、`c`（0.049）、`b`（0.096）。
+- `a` 与 `c` 的 cost 相同（0.049）→ 落到第二目标 latency：`a`（30ms）< `c`（55ms）→ `a` 排前。
+- 最终顺序 `a → c → b`，`a` 是首选 failover。
+
+**换 `--optimizer latency,cost` 再看**（首要变成时延）：
+
+| 候选 | cost 分（$/hr） | latency 分（ms） | 排序结果 |
+|------|----------------|------------------|----------|
+| `a.g6.large` | 0.049 | 180 | 3（latency 最大） |
+| `b.m5.large` | 0.096 | 30 | 1（latency 最小） |
+| `c.c7.large` | 0.049 | 55 | 2（latency 次小） |
+
+同样的候选、同样的分数，只因为**优先级顺序不同**，首选就从最便宜变成了最快。
+
+**对比：换成 Optimizer（完全式）时分数由你全权支配**
+
+如果实现 `Optimizer`，`Optimize` 返回的是 `*Plan`——此时不再有"打分→排序"的固定流程，你可以用任何方式使用分数（加权求和、帕累托前沿、约束过滤等）。例如一个预算优化器，可先按 `CostPerHour` 过滤超预算候选，再对剩余候选按 `EstimatedTime` 或 `VCPUs` 重新排序，甚至直接用 `c.OnDemand` 做数值计算——而不是仅作比较键。
 
 ---
 
@@ -158,7 +205,7 @@ func SetDefaultMeta(m Meta)                                   // 测试/扩展�
 func PricesForced(ctx, cloud, region, types) (map[string]catalog.Price, error)  // launch 前强刷价
 ```
 
-`Request` 不含 `Meta` 字段——元数据全局唯一。这对扩展者的含义：自定义 `Objective`/`Optimizer` 里不需要也不应该传 Meta，直接从包级 `Meta` 接口读（如果实现自定义 `Optimizer` 需要读取元数据，可通过 `SetDefaultMeta` 注入的 `Meta` 访问；但**推荐只读 `Candidate` 上已附好的数据**）。
+`Request` 不含 `Meta` 字段——元数据全局唯一。这对扩展者的含义：自定义 `Metric`/`Optimizer` 里不需要也不应该传 Meta，直接从包级 `Meta` 接口读（如果实现自定义 `Optimizer` 需要读取元数据，可通过 `SetDefaultMeta` 注入的 `Meta` 访问；但**推荐只读 `Candidate` 上已附好的数据**）。
 
 ---
 
@@ -171,7 +218,7 @@ gpi optimize train.yaml --optimizer cost    # 默认，按 $/hr 升序
 gpi optimize train.yaml --optimizer time    # 按预估运行时长升序（输出 EST TIME 列）
 ```
 
-### 3.2 指定策略（多目标字典序）
+### 3.2 指定策略（多指标字典序）
 
 ```bash
 gpi optimize train.yaml --optimizer cost,time   # 先成本，同价再看时长
@@ -196,14 +243,14 @@ plan, err = opt.Optimize(ctx, &optimizer.Request{Resources: ts.Resources, Option
 
 ---
 
-## 4. 组合式扩展：实现一个 Objective（推荐）
+## 4. 组合式扩展：实现一个 Metric（推荐）
 
-这是最常用的扩展方式：**只需提供"怎么给候选打分"**，候选收集、拉价、排序、无价沉底全部由 `strategyOptimizer` 处理。
+这是最常用的扩展方式：**只需提供"怎么给候选打分"**，候选收集、拉价、排序、无价沉底全部由 `lexicographicOptimizer` 处理。
 
-### 4.1 Objective 接口
+### 4.1 Metric 接口
 
 ```go
-type Objective interface {
+type Metric interface {
     Name() string                                // 唯一名，用于策略字符串（如 "latency"）
     Rank(c *Candidate, useSpot bool) float64     // 打分；值越小排名越靠前
 }
@@ -221,18 +268,18 @@ import (
 )
 
 // latencyTable：扩展者自己的元数据（例如每个 region 的 RTT 毫秒）。
-// 说明：Objective.Rank 只能看到 Candidate；扩展者在此把候选的 region 映射到自己的时延表。
+// 说明：Metric.Rank 只能看到 Candidate；扩展者在此把候选的 region 映射到自己的时延表。
 var latencyTable = map[string]float64{
     "cn-hangzhou": 30,
     "cn-beijing":  55,
     "us-east-1":   180,
 }
 
-type latencyObjective struct{}
+type latencyMetric struct{}
 
-func (latencyObjective) Name() string { return "latency" }
+func (latencyMetric) Name() string { return "latency" }
 
-func (latencyObjective) Rank(c *optimizer.Candidate, _ bool) float64 {
+func (latencyMetric) Rank(c *optimizer.Candidate, _ bool) float64 {
     if ms, ok := latencyTable[c.Region]; ok {
         return ms
     }
@@ -244,13 +291,13 @@ func (latencyObjective) Rank(c *optimizer.Candidate, _ bool) float64 {
 
 ```go
 // 注册为命名目标：此后 --optimizer cost,latency / ParseStrategy("cost,latency") 可用
-optimizer.RegisterObjective("latency", latencyObjective{})
+optimizer.RegisterMetric("latency", latencyMetric{})
 
 // 或编程式组合（不注册也行）
-strat := optimizer.NewStrategy(costObjective{}, latencyObjective{})
+strat := optimizer.NewStrategy(costMetric{}, latencyMetric{})
 ```
 
-> 注意：`RegisterObjective` 写入全局注册表。生产代码在 `init()` 或启动时调用一次即可；测试里记得清理或接受全局副作用。
+> 注意：`RegisterMetric` 写入全局注册表。生产代码在 `init()` 或启动时调用一次即可；测试里记得清理或接受全局副作用。
 
 ### 4.4 完整运行示例
 
@@ -289,7 +336,7 @@ type Optimizer interface {
 
 ### 5.2 注意事项
 
-- `strategyOptimizer` 是参考实现（`strategy.go`）；照它的结构：解析 `Request`/默认 `Options` → 收集候选 → 拉价 → 排序 → 组装 `Plan`。
+- `lexicographicOptimizer` 是参考实现（`lexicographic.go`）；照它的结构：解析 `Request`/默认 `Options` → 收集候选 → 拉价 → 排序 → 组装 `Plan`。
 - 候选收集与拉价目前是**包内私有**（`collectCandidates`/`attachPrices`）。完全式扩展者无法复用它们——需要自己实现匹配/拉价，或**只依赖 `Candidate` 上已有的数据**（比如对某个现成 Plan 的候选做二次重排）。这是有意的取舍：完全式扩展面向"换整个算法"，组合式面向"加一个维度"。
 - 元数据读取：包级 `SetDefaultMeta` 注入的 `Meta` 是唯一数据源；自定义 Optimizer 若要读规格/价格，直接通过 `Meta` 接口方法（但推荐优先用 `Candidate` 已附数据）。
 
@@ -394,7 +441,7 @@ func (fakeMeta) PricesForced(context.Context, string, string, []string) (map[str
     return nil, nil
 }
 
-func TestMyObjective(t *testing.T) {
+func TestMyMetric(t *testing.T) {
     optimizer.SetDefaultMeta(fakeMeta{})
     // ... 运行你的优化器 ...
 }
@@ -413,8 +460,8 @@ func TestMain(m *testing.M) {
 ### 6.2 参考实现
 
 `internal/optimizer/optimizer_ext_test.go`（`package optimizer_test`，外部包）演示了：
-- 实现自定义 `Objective`（`latencyObjective`）；
-- `RegisterObjective` + `ParseStrategy("latency")` 组合成策略；
+- 实现自定义 `Metric`（`latencyMetric`）；
+- `RegisterMetric` + `ParseStrategy("latency")` 组合成策略；
 - `SetDefaultMeta` 注入假元数据后跑 `Optimize`，验证排序。
 
 这是"外部使用者视角"的黄金参考。
@@ -423,9 +470,9 @@ func TestMain(m *testing.M) {
 
 ## 7. 演进方向
 
-- 把候选管道（`collectCandidates`/`attachPrices`）开放为导出 API（如 `RankCandidates(ctx, meta, rs, opts, objectives)`），让完全式扩展者也能复用匹配/拉价，而不是重写。
+- 把候选管道（`collectCandidates`/`attachPrices`）开放为导出 API（如 `RankCandidates(ctx, meta, rs, opts, metrics)`），让完全式扩展者也能复用匹配/拉价，而不是重写。
 - 增加"恢复默认 Meta"的导出便捷（如 `NewDefaultMeta()`），让测试更易还原全局状态。
-- 更多内置目标：碳排（`carbon`）、预算（`budget`）、可用性/竞价格上限等，均按 `Objective` 实现。
+- 更多内置目标：碳排（`carbon`）、预算（`budget`）、可用性/竞价格上限等，均按 `Metric` 实现。
 
 ---
 
@@ -434,12 +481,12 @@ func TestMain(m *testing.M) {
 | 我需要…… | 用这个 |
 |-----------|--------|
 | 换优化器/策略，不写代码 | `--optimizer cost` / `time` / `cost,time` |
-| 给候选加一个打分维度 | 实现 `Objective` → `RegisterObjective` |
-| 用目标实例组合策略（代码里） | `NewStrategy(latencyObjective{}, costObjective{})` |
+| 给候选加一个打分维度 | 实现 `Metric` → `RegisterMetric` |
+| 用指标实例组合策略（代码里） | `NewStrategy(latencyMetric{}, costMetric{})` |
 | 按策略名解析 | `ParseStrategy("cost,latency")` / `Resolve("...")` |
 | 接管整个优化算法 | 实现 `Optimizer` → `Register` |
 | 测试时注入假元数据 | `SetDefaultMeta(fakeMeta{})` |
 | launch 前强刷价格 | `PricesForced(ctx, cloud, region, types)` |
 | 读候选原始字段 | `Candidate`（规格、`OnDemand`/`Spot`/`EstimatedTime`、`CostPerHour`/`Priced`） |
-| 看内置目标名 | `ObjectiveNames()` |
+| 看内置目标名 | `MetricNames()` |
 | 看内置优化器名 | `Names()` |

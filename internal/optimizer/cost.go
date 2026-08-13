@@ -6,25 +6,25 @@ import (
 	"github.com/acmestack/gpi/internal/task"
 )
 
-// This file is the home of the "cost" objective — gpi's default placement
+// This file is the home of the "cost" metric — gpi's default placement
 // goal. Cost ranks placement candidates by hourly price (SkyPilot
 // minimize=COST): among all feasible instance types, the cheapest fit comes
 // first as the primary failover choice. Everything cost-specific lives here;
-// the shared pipeline is in candidate.go and multi-objective ranking in
-// strategy.go/objective.go.
+// the shared pipeline is in candidate.go and multi-metric ranking in
+// strategy.go/metric.go.
 
-// costObjective ranks candidates by hourly cost (SkyPilot minimize=COST).
+// costMetric ranks candidates by hourly cost (SkyPilot minimize=COST).
 // Lower hourly cost ranks earlier, so the cheapest feasible machine is the
 // primary placement candidate.
-type costObjective struct{}
+type costMetric struct{}
 
-// Name returns the objective's registered name ("cost").
-func (costObjective) Name() string { return "cost" }
+// Name returns the metric.s registered name ("cost").
+func (costMetric) Name() string { return "cost" }
 
 // Rank returns the candidate's hourly cost under the given spot preference.
 // A missing price is estimated via CostPerHour's fallback so ranking stays
 // meaningful; truly unpriced candidates are sunk by the strategy optimizer.
-func (costObjective) Rank(c *Candidate, useSpot bool) float64 {
+func (costMetric) Rank(c *Candidate, useSpot bool) float64 {
 	return c.CostPerHour(useSpot)
 }
 
@@ -39,7 +39,7 @@ func OptimizeByCost(rs *task.Resources, opts *Options) (*Plan, error) {
 // so live price refreshes can be cancelled/timed out with the parent
 // operation.
 func OptimizeByCostContext(ctx context.Context, rs *task.Resources, opts *Options) (*Plan, error) {
-	return NewStrategy(costObjective{}).Optimize(ctx, &Request{
+	return NewStrategy(costMetric{}).Optimize(ctx, &Request{
 		Resources: rs,
 		Options:   opts,
 	})

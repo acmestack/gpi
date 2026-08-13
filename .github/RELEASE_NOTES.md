@@ -6,7 +6,7 @@
 
 - **任务即代码**：一份 YAML 声明 `resources` / `setup` / `run`，可在任何支持的云上运行。
 - **价格驱动调度**：跨全部已注册云做资源匹配与实时比价，输出 failover placement plan。
-- **可插拔 Optimizer**：内置 `cost`（默认）与 `time` 两种目标，支持 `--optimizer cost,time` 等字典序多目标策略；通过 `Objective` 接口可扩展自定义目标（时延/碳排/预算等）。
+- **可插拔 Optimizer**：内置 `cost`（默认）与 `time` 两种指标，支持 `--optimizer cost,time` 等字典序多指标策略；通过 `Metric` 接口可扩展自定义指标（时延/碳排/预算等）。
 - **多云置备**：已支持 **aliyun + aws**（零官方 SDK，标准库实现签名），完整实例生命周期（VPC/SG/KeyPair/镜像/弹性 IP）。
 - **节点 Agent（gpilet）**：跑在每个节点上，采集 CPU/内存/磁盘/GPU/Ray 状态（对标 skylet）。
 - **多节点 Ray 集群**：`num_nodes>1` 自动组成 head/worker Ray 集群。

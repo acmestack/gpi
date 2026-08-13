@@ -6,23 +6,23 @@ import (
 	"github.com/acmestack/gpi/internal/task"
 )
 
-// This file is the home of the "time" objective — gpi's run-time-minimizing
+// This file is the home of the "time" metric — gpi's run-time-minimizing
 // placement goal. Time ranks candidates by estimated runtime (SkyPilot
 // minimize=TIME): the fastest feasible machine comes first as the primary
-// failover choice. Everything time-specific lives here: the timeObjective and
+// failover choice. Everything time-specific lives here: the timeMetric and
 // the runtime-estimation heuristic.
 
-// timeObjective ranks candidates by estimated runtime in hours (SkyPilot
+// timeMetric ranks candidates by estimated runtime in hours (SkyPilot
 // minimize=TIME). The estimate is pre-computed into candidate.EstimatedTime by
 // the strategy optimizer before ranking, so Rank just returns it.
-type timeObjective struct{}
+type timeMetric struct{}
 
-// Name returns the objective's registered name ("time").
-func (timeObjective) Name() string { return "time" }
+// Name returns the metric.s registered name ("time").
+func (timeMetric) Name() string { return "time" }
 
 // Rank returns the candidate's estimated runtime in hours. The value is
 // pre-computed by the strategy optimizer into c.EstimatedTime.
-func (timeObjective) Rank(c *Candidate, _ bool) float64 { return c.EstimatedTime }
+func (timeMetric) Rank(c *Candidate, _ bool) float64 { return c.EstimatedTime }
 
 // OptimizeByTime ranks placement candidates by estimated runtime ascending
 // using the shared metadata cache. It is the explicit form of "pick the
@@ -35,7 +35,7 @@ func OptimizeByTime(rs *task.Resources, opts *Options) (*Plan, error) {
 // so live price refreshes can be cancelled/timed out with the parent
 // operation.
 func OptimizeByTimeContext(ctx context.Context, rs *task.Resources, opts *Options) (*Plan, error) {
-	return NewStrategy(timeObjective{}).Optimize(ctx, &Request{
+	return NewStrategy(timeMetric{}).Optimize(ctx, &Request{
 		Resources: rs,
 		Options:   opts,
 	})

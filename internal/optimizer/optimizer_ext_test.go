@@ -11,16 +11,16 @@ import (
 )
 
 // This external-package test proves extension optimizers can be built with the
-// public API alone (Objective, RegisterObjective, ParseStrategy, NewStrategy,
+// public API alone (Metric, RegisterMetric, ParseStrategy, NewStrategy,
 // SetDefaultMeta) — no access to package internals required.
 
-// latencyObjective is a made-up extension objective: score by region name
+// latencyMetric is a made-up extension metric: score by region name
 // length (a stand-in for "region latency" metadata an extension would fetch).
-type latencyObjective struct{}
+type latencyMetric struct{}
 
-func (latencyObjective) Name() string { return "latency" }
+func (latencyMetric) Name() string { return "latency" }
 
-func (latencyObjective) Rank(c *optimizer.Candidate, _ bool) float64 {
+func (latencyMetric) Rank(c *optimizer.Candidate, _ bool) float64 {
 	// Pretend farther/longer region names are higher latency.
 	return float64(len(c.Region))
 }
@@ -44,15 +44,15 @@ func (fixedMeta) PricesForced(context.Context, string, string, []string) (map[st
 	return nil, nil
 }
 
-// TestExternalObjectiveExtension verifies a third-party objective can be
+// TestExternalMetricExtension verifies a third-party metric can be
 // registered and used in a strategy, ranking by its own metadata.
-func TestExternalObjectiveExtension(t *testing.T) {
-	optimizer.RegisterObjective("latency", latencyObjective{})
+func TestExternalMetricExtension(t *testing.T) {
+	optimizer.RegisterMetric("latency", latencyMetric{})
 	defer func() { /* keep registry clean for other tests */ }()
 
 	strat, err := optimizer.ParseStrategy("latency")
 	if err != nil {
-		t.Fatalf("strategy with custom objective should parse, got %v", err)
+		t.Fatalf("strategy with custom metric should parse, got %v", err)
 	}
 	ts, err := task.Parse([]byte("resources:\n  cpus: 2+"))
 	if err != nil {

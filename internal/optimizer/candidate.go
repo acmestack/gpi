@@ -11,8 +11,8 @@ import (
 // This file holds the candidate representation and the shared pipeline that
 // the strategy optimizer uses internally: collect feasible instances from the
 // shared metadata source, then attach live prices. Candidate is exported
-// because it is the unit an Objective ranks; the pipeline itself is unexported
-// since extensions compose objectives instead of reimplementing matching.
+// because it is the unit an Metric ranks; the pipeline itself is unexported
+// since extensions compose metrics instead of reimplementing matching.
 
 // maxPricedCandidates bounds how many candidates get a live price lookup; the
 // rest are dropped after a spec-proxy pre-rank. SkyPilot similarly limits the
@@ -21,7 +21,7 @@ const maxPricedCandidates = 200
 
 // Candidate is a cloud instance spec augmented with live prices. The spec
 // intentionally carries no price fields (prices are volatile), so scoring
-// happens on this wrapper. It is the unit an Objective ranks.
+// happens on this wrapper. It is the unit an Metric ranks.
 type Candidate struct {
 	*catalog.Instance
 	// OnDemand is the hourly on-demand price, 0 when unavailable.
@@ -29,7 +29,7 @@ type Candidate struct {
 	// Spot is the hourly spot price, 0 when unavailable.
 	Spot float64
 	// EstimatedTime is the estimated runtime in hours, populated by the
-	// "time" objective for ranking/display.
+	// "time" metric for ranking/display.
 	EstimatedTime float64
 }
 

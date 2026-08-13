@@ -1,8 +1,11 @@
 # Gpi 项目沟通记录（MEMORY）
 
-- **文档版本**：v6（2026-08-13）
+- **文档版本**：v9（2026-08-13）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v9（2026-08-13）**：补录 lexicographicOptimizer 独立成 lexicographic.go。
+- **v8（2026-08-13）**：补录 Objective→Metric、strategyOptimizer→lexicographicOptimizer 改名。
+- **v7（2026-08-13）**：补录扩展指南"打分后分数如何使用"小节。
 - **v6（2026-08-13）**：补录 optimizer 扩展文档文件表修正。
 - **v5（2026-08-13）**：补录 AGENTS 提交确认/tag 规则与 release tar 修复。
 - **v4（2026-08-09）**：补录 v0.0.1 发布与 RELEASE_NOTES 决策。
@@ -139,6 +142,19 @@
 
 - 修正 `docs/gpi-optimizer-extension.md` 文件职责表，对齐当前 optimizer 包拆分后的结构（optimizer/plan/request/meta/registry/candidate/objective/strategy/cost/time/match），移除已合并的 `meta_adapter.go` 行。
 
+### 2026-08-13（扩展指南补"打分后分数如何使用"）
+
+- 在 `docs/gpi-optimizer-extension.md` 新增小节：分数向量 → 字典序排序 → 截断 → Plan 的机制，`cost,latency` vs `latency,cost` 具体排序演示，以及 Optimizer 场景下分数的自由使用。
+
+### 2026-08-13（Objective→Metric、strategyOptimizer→lexicographicOptimizer 改名）
+
+- **决策**：命名调整——`Objective` → `Metric`（打分指标），`costObjective`/`timeObjective` → `costMetric`/`timeMetric`，`RegisterObjective` → `RegisterMetric`，`ObjectiveNames` → `MetricNames`，`objective.go` → `metric.go`；`strategyOptimizer` → `lexicographicOptimizer`（字典序多指标排序实现），对外 `NewStrategy`/`ParseStrategy` 保留。
+- **待办**：`strategyOptimizer` 命名曾列为待定，本次定为 `lexicographicOptimizer`；`Metric` 选用理由（单一打分维度，避免 Objective 的多目标歧义）。
+
+### 2026-08-13（lexicographicOptimizer 独立成 lexicographic.go）
+
+- **决策**：`lexicographicOptimizer`（算法实现：Name/Optimize）独立为 `lexicographic.go`；`strategy.go` 只留策略构造（`NewStrategy`/`ParseStrategy`）+ 内置 `cost`/`time` 注册，职责更清晰。
+
 ## 关键设计决策速查
 
 | 决策 | 结论 |
@@ -147,7 +163,7 @@
 | 元数据包结构 | 契约 `internal/cloud/catalog`（对应 sky/catalogs）+ Cache `internal/metacache` |
 | 新云接入 | 一个包 + 一个 struct（Provider 同时实现 Provider+Source） |
 | Optimizer | 可插拔；两种模式：指定优化器（cost/time）或策略（cost,time 字典序） |
-| 扩展优化器 | 实现 `Objective` + `RegisterObjective`/`NewStrategy` |
+| 扩展优化器 | 实现 `Metric` + `RegisterMetric`/`NewStrategy`（字典序 `lexicographicOptimizer` 排序） |
 | 元数据访问 | 全局 `defaultMeta`（`SetDefaultMeta` 注入） |
 | REST 前缀 | `/api/v1/gpi` 可自定义（`GPI_API_PREFIX`/`--api-prefix`） |
 | task 输入 | `clusters/{name}/launch`=YAML 字符串；`tasks/{name}/launch`=Task JSON |

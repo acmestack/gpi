@@ -429,7 +429,7 @@ func TestGetResolvesStrategyName(t *testing.T) {
 		t.Fatal("Get should resolve comma-separated strategy")
 	}
 	if Get("cost") == nil || Get("cost").Name() != "cost" {
-		t.Fatal("Get should resolve single objective")
+		t.Fatal("Get should resolve single metric")
 	}
 	if Get("bogus") != nil {
 		t.Fatal("Get should return nil for unknown name")
@@ -438,7 +438,7 @@ func TestGetResolvesStrategyName(t *testing.T) {
 
 func TestParseStrategyErrors(t *testing.T) {
 	if _, err := ParseStrategy("bogus"); err == nil {
-		t.Fatal("expected error for unknown objective")
+		t.Fatal("expected error for unknown metric")
 	}
 	if _, err := ParseStrategy(","); err == nil {
 		t.Fatal("expected error for empty strategy")
