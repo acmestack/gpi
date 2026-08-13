@@ -1,7 +1,8 @@
 # Optimizer 扩展指南（Extending the Placement Optimizer）
 
-- **文档版本**：v5（2026-08-09）
+- **文档版本**：v6（2026-08-13）
 - **适用项目**：Gpi（`github.com/acmestack/gpi`）
+- **v6（2026-08-13）**：修正文件职责表以匹配当前 optimizer 包结构——`optimizer.go`（接口+Get/Resolve）、`plan.go`、`request.go`、`meta.go`（含 `newCacheMeta`）、`registry.go`、`match.go`；移除已合并的 `meta_adapter.go`。
 - **v5（2026-08-09）**：新增"Objective 与 Optimizer 的差异"小节（打分维度 vs 决策整体，含选型指引）。
 - **v4（2026-08-09）**：移除文档内"变更规则"行（该规则统一到项目根 `AGENTS.md`）；补齐版本变更记录区。
 - **v3（2026-08-09）**：`timeObjective` 移入 `time.go` 并新增显式 `OptimizeByTime`/`OptimizeByTimeContext`（与 cost 对称）；`NewStrategy`/`ParseStrategy` 移到 `strategy.go`（策略构造归属）。`objective.go` 只剩 `Objective` 接口与目标注册表。更新文件职责表。
@@ -26,13 +27,17 @@ optimizer 包按职责分文件：
 
 | 文件 | 内容 |
 |------|------|
-| `optimizer.go` | 核心类型（`Launch`/`Plan`/`Request`/`Options`/`Meta`）、`Optimizer` 接口、注册表、`defaultMeta` 全局、`SetDefaultMeta`/`PricesForced` |
+| `optimizer.go` | `Optimizer` 接口 + `Get`/`Resolve` 解析入口（按名字/策略解析） |
+| `plan.go` | `Launch`/`Plan`（placement 决策 + 排序输出） |
+| `request.go` | `Options`/`Request`（搜索空间 + 输入） |
+| `meta.go` | `Meta` 接口 + 共享 `defaultMeta`（含 `newCacheMeta` 适配） + `SetDefaultMeta`/`PricesForced` |
+| `registry.go` | 命名优化器注册表（`Register`/`Names`/`Default`/`DefaultName`） |
 | `candidate.go` | `Candidate`（可排序的候选单元）+ 内部候选管道（`collectCandidates`/`attachPrices`，未导出） |
 | `objective.go` | `Objective` 接口 + `RegisterObjective`/`ObjectiveNames`（目标注册表） |
 | `strategy.go` | `strategyOptimizer`：多目标字典序排序 + `NewStrategy`/`ParseStrategy` + 内置 `cost`/`time` 注册 |
 | `cost.go` | **cost 目标的归属**：`costObjective` 定义 + 显式入口 `OptimizeByCost`/`OptimizeByCostContext` + 别名 `Optimize`/`OptimizeWithContext` |
 | `time.go` | **time 目标的归属**：`timeObjective` 定义 + 显式入口 `OptimizeByTime`/`OptimizeByTimeContext` + `estimateRuntime` 启发式 |
-| `meta_adapter.go` | `newCacheMeta`：把 `metacache.Cache` 适配成 `Meta`（内部用） |
+| `match.go` | `matchesResources`：候选资源匹配过滤 |
 
 ### 一次优化发生了什么
 
