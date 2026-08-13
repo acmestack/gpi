@@ -204,7 +204,7 @@ GPI_STATE_BACKEND=redis GPI_STATE_REDIS_ADDR=localhost:6379
 - 响应 key 风格：默认 camel，可 snake / pascal（`--api-key-style`）。
 - API 认证：`--require-auth` 开启 Bearer 令牌认证；先 `gpi server token create` 生成令牌（需经 HTTP 引导一次），请求带 `Authorization: Bearer <token>`，支持过期/撤销/轮换（`gpi server token list|revoke|rotate`）。
 - Middleware 可扩展：`server.Middleware` 接口 + `AddMiddleware` 定制（认证/限流/追踪等）；内置安全头、CORS（`--enable-cors`）、request-id、日志中间件。
-- OpenAPI/Swagger：`--docs` 开启 `/swagger.json`、`/docs`（Swagger UI）、`/redoc`；最新规范在 [docs/apis/openapi.json](docs/apis/openapi.json)，在线交互式预览见 https://acmestack.github.io/gpi/apis（GitHub Pages 自动发布 `docs/`）。
+- OpenAPI/Swagger：`--docs` 开启 `/swagger.json`、`/docs`（Swagger UI）、`/redoc`；最新规范在仓库根 [openapi.json](openapi.json)（GitLab 内建在线渲染）。
 
 ### 部署到 Kubernetes
 
