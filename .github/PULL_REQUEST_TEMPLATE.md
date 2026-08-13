@@ -30,16 +30,6 @@
 
 - Related issue / PR / 关联 issue / PR：#
 
-## CLA
-
-If this is your first PR, reply the following in the [CLA assistant](https://cla-assistant.io) comment to sign the agreement:
-如果这是你的第一个 PR，请在 CLA assistant 评论中回复以下消息以签署协议：
-
-> I have read the CLA Document and I hereby sign the CLA
-
-See [.github/CLA.md](.github/CLA.md) and [AcmeStack Contributor License Agreement](https://acmestack.com/docs/contributing/contributor-license-agreement/).
-详见 [.github/CLA.md](.github/CLA.md) 与 [AcmeStack Contributor License Agreement](https://acmestack.com/docs/contributing/contributor-license-agreement/)。
-
 ## Notes / 其他
 
 <!-- Anything else reviewers should know (performance, breaking changes, migration, etc.).
