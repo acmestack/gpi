@@ -1,8 +1,9 @@
 # Gpi 项目沟通记录（MEMORY）
 
-- **文档版本**：v2（2026-08-09）
+- **文档版本**：v3（2026-08-09）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v3（2026-08-09）**：补录 ec2 命名、RunInstances 复用、optimizer 包拆分、OpenAPI 改 GitLab 渲染等近期决策；更新 OpenAPI 查看方式速查。
 - **v2（2026-08-09）**：按 AGENTS.md 新规则建立"每次沟通后追加记录"；补齐 K8s 部署 / OpenAPI 在线预览 / License/CLA / PR 模板等近期决策；修正头部日期。
 - **v1（2026-08-09）**：创建本文件，汇总从立项起的沟通历史与关键决策。
 
@@ -112,6 +113,14 @@
 - README 新增"部署到 Kubernetes"与 Overview 内可扩展入口链接。
 - **决策**：AGENTS.md 新增"沟通记录（MEMORY）"规则——每次沟通结束都追加到 `aiagents/MEMORY.md`。
 
+### 2026-08-09（ec2 命名 · RunInstances 复用 · optimizer 拆分 · OpenAPI 换 GitLab 渲染）
+
+- **任务1**：aws `ec2.go` 命名确认正确（AWS 虚拟机服务是 EC2，ECS 是容器服务），不改。
+- **决策**：`RunInstances` 参考 SkyPilot 改为**先 list 再复用/重启/创建**——按 cluster 名查已有实例，running 足够直接复用、stopped（`ResumeStoppedNodes`）`StartInstances` 重启、否则新建（aliyun + aws；`LaunchSpec.ResumeStoppedNodes`，provisioner 默认开启）。
+- **决策**：optimizer 包按职责拆分——`plan.go`/`request.go`/`meta.go`（合并原 meta_adapter）/`registry.go`/`candidate.go`/`objective.go`/`strategy.go`/`cost.go`/`time.go`；`Optimizer` 接口 + `Get`/`Resolve` 最终保留在 `optimizer.go`，`registry.go` 只留注册表。
+- 扩展指南补"Objective vs Optimizer"差异（打分维度 vs 决策整体）。
+- **决策**：移除 GitHub Pages（不支持 OpenAPI 渲染）——删除 `pages.yml`/`docs/apis/index.html`/`swagger-initializer.js`；`openapi.json` 改提交到**仓库根**，用 **GitLab 内建 OpenAPI viewer** 在线查看（托管在 code.cestc.cn）。
+
 ## 关键设计决策速查
 
 | 决策 | 结论 |
@@ -126,7 +135,7 @@
 | task 输入 | `clusters/{name}/launch`=YAML 字符串；`tasks/{name}/launch`=Task JSON |
 | 文档版本 | 版本号记录在 docs 内容中；变更记录放顶部版本号下方 |
 | K8s 部署 | `deploy/k8s/`，`kubectl apply -k deploy/k8s`；默认 redis 后端 |
-| OpenAPI 在线预览 | `docs/apis/openapi.json` + GitHub Pages Swagger UI → `https://acmestack.github.io/gpi/apis` |
+| OpenAPI 在线查看 | 仓库根 `openapi.json` + GitLab 内建 viewer（无需 GitHub Pages） |
 | License / CLA | MIT；AcmeStack CLA（`.github/CLA.md` + cla-assistant） |
 | 沟通记录 | 每次沟通后追加到 `aiagents/MEMORY.md` |
 | 平台 | Linux/macOS；无 Windows |

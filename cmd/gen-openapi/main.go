@@ -1,6 +1,7 @@
-// Command gen-openapi regenerates docs/apis/openapi.json from the built-in
-// OpenAPI spec. Run via `make openapi`; commit the resulting file so the
-// GitHub Pages Swagger UI (https://<owner>.github.io/gpi/apis) stays current.
+// Command gen-openapi regenerates openapi.json from the built-in OpenAPI spec.
+// Run via `make openapi`; commit the resulting file. GitLab renders an
+// openapi.json at the repository root with its built-in OpenAPI viewer, so the
+// API docs are viewable interactively at the repo's web URL.
 package main
 
 import (
@@ -22,7 +23,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "render openapi:", err)
 		os.Exit(1)
 	}
-	const out = "docs/apis/openapi.json"
+	const out = "openapi.json"
 	if err := os.WriteFile(out, spec, 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, "write openapi:", err)
 		os.Exit(1)

@@ -9,8 +9,8 @@ build: generate gpi gpilet
 generate:
 	go generate ./internal/cloud/imports
 
-# Regenerate docs/apis/openapi.json from the built-in OpenAPI spec (commit the
-# result so the GitHub Pages Swagger UI stays current).
+# Regenerate openapi.json (repo root) from the built-in OpenAPI spec. GitLab
+# renders a repo-root openapi.json with its built-in viewer; commit the result.
 openapi:
 	go run ./cmd/gen-openapi
 

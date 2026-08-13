@@ -1,12 +1,13 @@
 # Gpi 架构设计文档
 
-- **文档版本**：v50（2026-08-09）
+- **文档版本**：v51（2026-08-09）
 - **module**：`github.com/acmestack/gpi`
 - **CLI**：`gpi`（二进制 `cmd/gpi`）
 - **目标**：参考 SkyPilot 模式，用 Go 重写实现多云算力调度（multi-cloud compute scheduling），对标 SkyPilot 的 launcher / optimizer / SkyServe / Sky Jobs / API server。
 
 ## 版本记录
 
+- **v51（2026-08-09）**：移除 GitHub Pages（`.github/workflows/pages.yml`、`docs/apis/index.html`、`swagger-initializer.js`）——GitHub 不支持内建 OpenAPI 渲染。`openapi.json` 改提交到**仓库根**，利用 **GitLab 内建 OpenAPI viewer** 在线交互查看（项目托管在 code.cestc.cn）。文档升版 v51。
 - **v50（2026-08-09）**：optimizer 包再调整——`Optimizer` 接口与 `Get`/`Resolve` 解析入口移回 `optimizer.go`，`registry.go` 只保留命名注册表（`Register`/`Names`/`Default`/`DefaultName`）。文档升版 v50。
 - **v49（2026-08-09）**：①`RunInstances` 参考 SkyPilot 改为**先 list 再复用/重启/创建**——按 cluster 名列出已有实例，running 足够直接复用、stopped（`ResumeStoppedNodes`）`StartInstances` 重启复用、否则新建（aliyun + aws，`LaunchSpec.ResumeStoppedNodes`，provisioner 默认开启）；②optimizer 包按职责拆分（plan/request/meta/registry/candidate/objective/strategy/cost/time）；③扩展指南补"Objective vs Optimizer"差异。文档升版 v49。
 - **v48（2026-08-09）**：OpenAPI 在线预览路径改为 `https://acmestack.github.io/gpi/apis`——Swagger UI 三件套（index.html/swagger-initializer.js/openapi.json）移到 `docs/apis/`，`make openapi` 输出到 `docs/apis/openapi.json`。文档升版 v48。
@@ -376,7 +377,7 @@ Provider 若同时实现 `catalog.Source`（元数据契约，见 §5），`clou
   - `GET /docs`：Swagger UI
   - `GET /redoc`：ReDoc
   - docs 端点公开（不要求 token），方便查看接口文档。
-- **在线查看（推荐）**：最新 OpenAPI 规范已提交到仓库 `docs/apis/openapi.json`（`make openapi` 重新生成）。GitHub 只对 JSON 高亮、不渲染 OpenAPI，故用 **GitHub Pages + Swagger UI** 提供交互式预览：`docs/apis/index.html` 加载 `swagger-initializer.js` 指向 `./openapi.json`，`.github/workflows/pages.yml` 在 `docs/**` 变更时发布，访问 `https://<owner>.github.io/gpi/apis`。K8s Deployment 默认不开启 `--docs`。
+- **在线查看**：最新 OpenAPI 规范提交在仓库根 `openapi.json`（`make openapi` 重新生成）。**GitLab 内建 OpenAPI 渲染**，打开仓库该文件即得交互式 UI（无需 GitHub Pages）；GitHub 只做 JSON 高亮，需要交互时粘贴到 [Swagger Editor](https://editor.swagger.io)。K8s Deployment 默认不开启 `--docs`。
 
 ## 10. 命令参考（gpi）
 
