@@ -295,17 +295,143 @@ Provider 若同时实现 `catalog.Source`（元数据契约，见 §5），`clou
 - **file**：每类数据一个 JSON 文件，原子写（tmp+rename），默认 `~/.gpi/`（`GPI_HOME` 可覆盖）：
   - `state.json`（clusters）、`state-services.json`、`state-jobs.json`、`state-cluster-yaml.json`、`state-cluster-history.json`、`state-cluster-events.json`、`state-config.json`、`state-tokens.json`
 - **redis**：每类数据一个 key（`gpi:clusters`/`gpi:services`/`gpi:jobs`/`gpi:cluster_yaml`/`gpi:cluster_history`/`gpi:cluster_events`/`gpi:config`/`gpi:tokens`），JSON blob，SET/GET 原子写，语义同 file 的分文件。
-- **sqlite / mysql**：每个实体一张表，参考 SkyPilot 的按实体建表方式：
-  - `clusters`（name PK，status/backend/cloud/region/num_nodes/task_yaml 显式列 + data JSON 列）
-  - `services`、`jobs` 同理（显式索引列 + data JSON 列）
-  - `cluster_yaml`：每个集群的 task YAML 快照（launch 时写入）
-  - `cluster_history`：集群启动历史（num_nodes/cloud/region/instance_type/backend/launched_at）
-  - `cluster_events`：生命周期事件（from/to/type/reason/request_id/transitioned_at），对齐 SkyPilot cluster_events
-  - `config`：KV 运行时配置（对齐 SkyPilot config 表）
-  - `service_account_tokens`：API 访问令牌（token_hash 唯一索引、过期、撤销/轮换），对齐 SkyPilot service_account_tokens
-  - 旧版单表 `gpi_state` 数据会在首次打开时自动迁移到新表并删除旧表。
+- **sqlite / mysql**：每个实体一张表，参考 SkyPilot 的按实体建表方式。完整表结构见下方 §9.0。
+
+### 9.0 数据库表结构（sqlite / mysql）
+
+SQL 后端（`internal/state/sql.go`）按实体拆表。设计原则：**显式主键 + 常用查询/过滤列建立索引 + 富内容存 `data`/`Text` JSON 列**（对齐 SkyPilot 的 spot / job_info / job_events）。时间戳一律 `BIGINT`（Unix 秒）。
+
+| 表 | 主键 | 列（类型 / 约束） | 说明 |
+|---|---|---|---|
+| `clusters` | `name` | `status`(VARCHAR64), `backend`(VARCHAR32), `cloud`(VARCHAR64), `region`(VARCHAR64), `num_nodes`(INTEGER DEFAULT 0), `task_yaml`(MEDIUMTEXT), `data`(MEDIUMTEXT NOT NULL), `created_at`/`updated_at`(BIGINT NOT NULL) | 集群记录；`data` 为完整 `state.Cluster` JSON（instances/tags/labels/网络字段等） |
+| `services` | `name` | `status`(VARCHAR64), `replicas`(INTEGER DEFAULT 0), `port`(INTEGER DEFAULT 0), `data`(MEDIUMTEXT NOT NULL), `created_at`/`updated_at`(BIGINT NOT NULL) | 服务部署（SkyServe 对标）；`data` 为 `state.Service` JSON |
+| `jobs` | `name` | `status`(VARCHAR64), `schedule`(VARCHAR255), `run_count`(INTEGER DEFAULT 0), `fail_count`(INTEGER DEFAULT 0), `next_run`(BIGINT DEFAULT 0), `data`(MEDIUMTEXT NOT NULL), `created_at`/`updated_at`(BIGINT NOT NULL) | 定时/一次性任务（Sky Jobs 对标）；`data` 为 `state.Job` JSON |
+| `cluster_yaml` | `cluster_name` | `yaml`(MEDIUMTEXT NOT NULL), `created_at`/`updated_at`(BIGINT NOT NULL) | 集群 task YAML 快照（launch 时写入，可回溯精确配置） |
+| `cluster_history` | `cluster_name` | `num_nodes`(INTEGER DEFAULT 0), `cloud`(VARCHAR64), `region`(VARCHAR64), `zone`(VARCHAR64), `instance_type`(VARCHAR64), `backend`(VARCHAR32), `task_yaml`(MEDIUMTEXT), `launched_at`(BIGINT DEFAULT 0), `created_at`/`updated_at`(BIGINT NOT NULL) | 集群启动事实（down 后保留，用于成本/用量统计） |
+| `cluster_events` | —（无显式 PK，追加型） | `cluster_name`(VARCHAR255), `starting_status`(VARCHAR64), `ending_status`(VARCHAR64), `reason`(MEDIUMTEXT), `type`(VARCHAR32), `request_id`(VARCHAR255), `transitioned_at`(BIGINT NOT NULL) | 生命周期事件流（launch/stop/start/down/status_change），`request_id` 透传可追踪 |
+| `config` | `config_key` | `config_value`(MEDIUMTEXT NOT NULL), `created_at`/`updated_at`(BIGINT NOT NULL) | 运行时 KV 配置（服务端多实例共享；属 `internal/state`，与 `internal/config` 文件配置无关，见 §9.1.1） |
+| `service_account_tokens` | `token_id` | `token_name`(VARCHAR255), `token_hash`(VARCHAR255 NOT NULL UNIQUE), `created_at`(BIGINT NOT NULL), `last_used_at`(BIGINT DEFAULT 0), `expires_at`(BIGINT DEFAULT 0), `creator`(VARCHAR255) | API 访问令牌；只存 sha256 哈希，`token_hash` 唯一索引；过期/撤销（撤销=删行） |
+
+DDL（`ensureTables` 实际执行的建表语句，`CREATE TABLE IF NOT EXISTS`）：
+
+```sql
+CREATE TABLE IF NOT EXISTS clusters (
+    name VARCHAR(255) NOT NULL,
+    status VARCHAR(64),
+    backend VARCHAR(32),
+    cloud VARCHAR(64),
+    region VARCHAR(64),
+    num_nodes INTEGER NOT NULL DEFAULT 0,
+    task_yaml MEDIUMTEXT,
+    data MEDIUMTEXT NOT NULL,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    PRIMARY KEY (name)
+);
+CREATE TABLE IF NOT EXISTS services (
+    name VARCHAR(255) NOT NULL,
+    status VARCHAR(64),
+    replicas INTEGER NOT NULL DEFAULT 0,
+    port INTEGER NOT NULL DEFAULT 0,
+    data MEDIUMTEXT NOT NULL,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    PRIMARY KEY (name)
+);
+CREATE TABLE IF NOT EXISTS jobs (
+    name VARCHAR(255) NOT NULL,
+    status VARCHAR(64),
+    schedule VARCHAR(255),
+    run_count INTEGER NOT NULL DEFAULT 0,
+    fail_count INTEGER NOT NULL DEFAULT 0,
+    next_run BIGINT NOT NULL DEFAULT 0,
+    data MEDIUMTEXT NOT NULL,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    PRIMARY KEY (name)
+);
+CREATE TABLE IF NOT EXISTS cluster_yaml (
+    cluster_name VARCHAR(255) NOT NULL,
+    yaml MEDIUMTEXT NOT NULL,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    PRIMARY KEY (cluster_name)
+);
+CREATE TABLE IF NOT EXISTS cluster_history (
+    cluster_name VARCHAR(255) NOT NULL,
+    num_nodes INTEGER NOT NULL DEFAULT 0,
+    cloud VARCHAR(64),
+    region VARCHAR(64),
+    zone VARCHAR(64),
+    instance_type VARCHAR(64),
+    backend VARCHAR(32),
+    task_yaml MEDIUMTEXT,
+    launched_at BIGINT NOT NULL DEFAULT 0,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    PRIMARY KEY (cluster_name)
+);
+CREATE TABLE IF NOT EXISTS cluster_events (
+    cluster_name VARCHAR(255) NOT NULL,
+    starting_status VARCHAR(64),
+    ending_status VARCHAR(64),
+    reason MEDIUMTEXT,
+    type VARCHAR(32),
+    request_id VARCHAR(255),
+    transitioned_at BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS config (
+    config_key VARCHAR(255) NOT NULL,
+    config_value MEDIUMTEXT NOT NULL,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    PRIMARY KEY (config_key)
+);
+CREATE TABLE IF NOT EXISTS service_account_tokens (
+    token_id VARCHAR(255) NOT NULL,
+    token_name VARCHAR(255),
+    token_hash VARCHAR(255) NOT NULL UNIQUE,
+    created_at BIGINT NOT NULL,
+    last_used_at BIGINT NOT NULL DEFAULT 0,
+    expires_at BIGINT NOT NULL DEFAULT 0,
+    creator VARCHAR(255),
+    PRIMARY KEY (token_id)
+);
+```
+
+- **file / redis 后端映射**：sqlite/mysql 每张表对应 file 后端的一个 `state-<table>.json` 文件、redis 后端的一个 `gpi:<table>` key（见上文 file/redis 列表），语义一致。
 - 记录入口统一在 `backend.Manager.Launch`（yaml+history+launch event）；`Down/Stop/Start` 写入事件。查看：`gpi cluster yaml|history|events C`。
 - **API 认证**：`gpi server start --require-auth` 开启后，除 `/healthz` 与 `POST /api/v1/gpi/tokens`（引导首个 token）外，所有请求须携带 `Authorization: Bearer <token>`；服务端按 sha256 查 `service_account_tokens` 校验有效/未过期/未撤销。token 管理：`gpi server token create|list|revoke|rotate`。
+
+## 9.1 用户配置（internal/config）
+
+对标 SkyPilot `~/.sky/config.yaml`：用户级 `$GPI_HOME/config.yaml`（默认 `~/.gpi/config.yaml`）与项目级 `.gpi.yaml`（工作目录下）层叠合并（项目覆盖用户），读取结果缓存到进程结束。**优先级：CLI flag > task YAML > config 文件 > 内置默认**——flag 显式传入时优先，config 只作持久默认。
+
+- **云专项配置由各云自己定义**：`internal/config` 是**云无关**的，只保留通用字段（`allowed_clouds`/`region`/`zone`/`use_spot`）；每个云的配置结构体（`Config`，yaml 标签对应 `aws.*`/`aliyun.*`）放在该云自己的包里的 `config.go`，通过 `config.Load().Section(cloudName, &cfg)` 解码。**新增云零改动 `internal/config`**。
+- **云网络复用（本次核心）**：provider 在 `RunInstances` 网络解析时先读各自的 config 段，命中则复用已有资源，否则回退现有自动逻辑：
+  - aws：`LoadConfig()` 读 `aws.vpc_names` / `aws.subnet_names`（按 Name tag 或 id 匹配）、`aws.security_group_name`（按名称或 id 复用，不再自动创建 `gpi-sg`）。
+  - aliyun：`LoadConfig()` 读 `aliyun.vpc_id` / `aliyun.vswitch_ids` / `aliyun.security_group_id`（按 id 复用）。
+- **全局默认**：`allowed_clouds`（云过滤默认值）、`region` / `zone` / `use_spot`（`gpi launch`/`optimize` 的 flag 未显式指定时的默认值）。
+- 配置示例见 `examples/gpi-config.yaml`。
+
+### 9.1.1 两个 "config" 的区分
+
+gpi 里有**两个完全不同的 `config`**，名字相同但职责、生命周期、读写方都无关，请勿混用：
+
+| | **文件配置**（`internal/config` 包） | **运行时配置**（`internal/state` 的 `config` 表） |
+|---|---|---|
+| 存放 | `$GPI_HOME/config.yaml` + 项目 `.gpi.yaml`（YAML 文件） | state 后端：`state-config.json` / sqlite/mysql 表 `config` / redis key `gpi:config` |
+| 读端 | gpi **客户端进程**（CLI / provider），单机 | **服务端多实例**共享（每个 server 读到同一份） |
+| 写端 | 用户/项目手写 YAML | REST `PUT /api/v1/gpi/config/{key}` |
+| 访问方式 | `config.Load()` → `Section(name, &cfg)`，进程内缓存 | `Store.GetConfig/SetConfig/ListConfig` |
+| 结构 | 嵌套 YAML，通用字段 + 云专项强类型（aws/aliyun 各自 `Config` struct） | 扁平 KV（`map[key]string`），无结构 |
+| 语义 | **每机/每项目的启动偏好**（VPC/子网/安全组复用、region/zone/spot 默认） | **跨实例一致的运行时开关**（如全局默认 autostop） |
+| 优先级 | CLI flag > task YAML > 文件 config > 内置默认 | 与启动流程无关，服务端运行时读取 |
+| 当前消费者 | CLI + 各云 provider（核心） | **零生产消费者**（仅 REST handler，测试用 `autostop` 占位） |
+
+> **一句话记忆**：`internal/config` = 用户写的配置文件（改它改启动行为）；`internal/state` 的 `config` 表 = 服务端 KV 开关表（目前还没有真正的消费者，等有"所有 server 实例必须读到同一个开关"的需求时启用）。
+>
+> 这也是为什么 `config.Load()` **不读** `internal/state` 的 `config` 表——region/zone/spot 是单机 CLI 消费，走文件即可；真需要"服务端全局开关"时应由 server 读 `internal/state` 的 `config` 表，而不是让 `internal/config` 去碰它。
 
 ## 11.4 Middleware 与 OpenAPI（Swagger）
 
@@ -413,6 +539,8 @@ Provider 若同时实现 `catalog.Source`（元数据契约，见 §5），`clou
 
 ## 版本记录
 
+- **v55（2026-08-13）**：新增 §9.0 数据库表结构——sqlite/mysql 全部 8 张表的列/类型/约束/主键对比表 + 完整 DDL（`ensureTables`），file/redis 映射说明。文档升版 v55。
+- **v54（2026-08-13）**：新增 §9.1.1"两个 config 的区分"——`internal/config` 包（文件配置，单机客户端）vs `internal/state` 的 `config` 表（运行时 KV，服务端多实例），含对比表与一句话记忆，消除同名混淆。文档升版 v54。
 - **v53（2026-08-13）**：`lexicographicOptimizer` 独立为 `lexicographic.go`（算法实现），`strategy.go` 只留策略构造（`NewStrategy`/`ParseStrategy`）+ 内置注册。文档升版 v53。
 - **v52（2026-08-13）**：optimizer 命名调整——`Objective` → `Metric`（打分指标），`costObjective`/`timeObjective` → `costMetric`/`timeMetric`，`RegisterObjective` → `RegisterMetric`，`objective.go` → `metric.go`；`strategyOptimizer` → `lexicographicOptimizer`（字典序多指标排序），对外 `NewStrategy`/`ParseStrategy` 保留。文档升版 v52。
 - **v51（2026-08-09）**：移除 GitHub Pages（`.github/workflows/pages.yml`、`docs/apis/index.html`、`swagger-initializer.js`）——GitHub 不支持内建 OpenAPI 渲染。`openapi.json` 改提交到**仓库根**，利用 **GitLab 内建 OpenAPI viewer** 在线交互查看（项目托管在 code.cestc.cn）。文档升版 v51。
@@ -451,20 +579,20 @@ Provider 若同时实现 `catalog.Source`（元数据契约，见 §5），`clou
 - **v18（2026-08-08）**：Middleware 抽象 + OpenAPI/Swagger。`server.Middleware` 接口 + `AddMiddleware` 自定义扩展（对齐 SkyPilot 中间件栈）；内置安全头/CORS/认证/request-id/日志中间件；`--docs` 提供 `/swagger.json`、`/docs`（Swagger UI）、`/redoc`。文档升版 v18。
 - **v17（2026-08-08）**：补齐 `config`（KV 配置）与 `service_account_tokens`（API 令牌）两张表（对齐 SkyPilot）。新增 `--require-auth` Bearer 认证中间件（sha256 查库、支持过期/撤销/轮换）与 `gpi server token create|list|revoke|rotate`、config HTTP 端点。文档升版 v17。
 - **v16（2026-08-08）**：对齐 SkyPilot 补齐集群快照/历史/事件：`cluster_yaml`（任务 YAML 快照）、`cluster_history`（启动历史）、`cluster_events`（生命周期事件，含 request_id），file/sqlite/mysql 后端均支持；`backend.Manager.Launch` 统一记录，新增 `gpi cluster yaml|history|events` 命令。文档升版 v16。
-- **v15（2026-08-08）**：SQL 后端按实体拆表（`clusters`/`services`/`jobs`），参考 SkyPilot 建表方式（显式索引列 + data JSON 列），并支持旧 `gpi_state` 单表自动迁移。文档升版 v15。
+- **v15（2026-08-08）**：SQL 后端按实体拆表（`clusters`/`services`/`jobs`），参考 SkyPilot 建表方式（显式索引列 + data JSON 列）。文档升版 v15。
 - **v14（2026-08-08）**：明确平台支持为 Linux/macOS，移除 Windows 交叉编译目标（CI/release workflow 与 gpilet 构建 tag），不再提供 Windows 支持。文档升版 v14。
 - **v13（2026-08-08）**：响应 key 风格可配置（camel/snake/pascal，默认小驼峰）。`GPI_API_RESPONSE_KEY_STYLE`/`--api-key-style`/`SetKeyStyle` 配置，递归作用于整个响应体所有 key。文档升版 v13。
 - **v12（2026-08-08）**：新增 Request ID。每个请求带请求头则透传、否则生成；响应 header 与 body 均回写（header key 默认 `x-request-id`，`GPI_REQUEST_ID_HEADER`/`--request-id-header` 可配，body 字段默认 `request_id`）。文档升版 v12。
 - **v11（2026-08-08）**：API 响应结构可定制。`server.ResponseEncoder` 接口 + 内置 raw/envelope；按 `GPI_RESPONSE_FORMAT` 或 `--response-format` 选择，字段名可配置，也支持团队自定义 Encoder。文档升版 v11。
 - **v10（2026-08-08）**：新增执行后端抽象（对标 SkyPilot backend 层）。`internal/backend` 定义 `Backend` 接口 + `Manager` 分派；支持 `cloud`（默认）/`existing`（挂已有主机 SSH）/`docker`（本地容器）/`local`（本机直跑）；非 cloud 后端跳过 optimizer。文档升版 v10。
-- **v9（2026-08-08）**：持久化可插拔。抽象 `state.Backend`，支持 file（默认）/sqlite/mysql 三后端，按 `GPI_STATE_BACKEND` 配置选择；sqlite/mysql 用单表 `gpi_state` 存 JSON blob。文档升版 v9。
+- **v9（2026-08-08）**：持久化可插拔。抽象 `state.Backend`，支持 file（默认）/sqlite/mysql 三后端，按 `GPI_STATE_BACKEND` 配置选择。文档升版 v9。
 - **v8（2026-08-08）**：新增 gpilet 节点 agent（对标 skylet）。`cmd/gpilet` + `internal/gpilet`：`gpilet serve` 常驻采集 CPU/内存/磁盘/GPU/Ray 状态写入 `/var/lib/gpilet/status.json`；Launch 自动上传并拉起；`gpi cluster nodes C --health` 读取实时健康。文档升版 v8。
 - **v7（2026-08-08）**：tags 与 labels 合并。对云而言两者都是实例 key-value 标签，现统一合并写入云实例（`LaunchSpec.Tags`，顶层 `tags:` 优先）；`resources.labels:` 同时注入 Ray。文档升版 v7。
 - **v6（2026-08-08）**：支持每次任务动态 AK/SK。任务顶层 `credentials:`（aws/aliyun 分块）提供专属凭据则优先使用，否则回退 env/磁盘默认加载；凭据持久化到集群状态（`state.CloudCreds`），Down/Stop/Start 复用。示例 `examples/with-credentials.yaml`。文档升版 v6。
 - **v5（2026-08-08）**：支持自定义 tags 与 labels。任务顶层 `tags:` 合并进云实例标签；`resources.labels:` 注入 `ray start --labels`（head+worker），并持久化到集群状态、`gpi cluster status` 展示。文档升版 v5。
 - **v4（2026-08-08）**：补齐 Ray 集群架构。`num_nodes>1` 时节点带角色 head/worker，launch 后自动 bootstrap Ray（head `ray start --head`，worker 加入）；setup 并行跑全部节点、run 在 head；新增 `gpi cluster status|nodes`、`gpi status` 展示角色统计、任务内 `{{cluster.head_ip}}/{{cluster.num_workers}}` 注入。文档升版 v4。
 - **v3（2026-08-08）**：实现 AWS Provider（`internal/cloud/aws` + `internal/catalog/aws*`）。零 SDK 依赖，用标准库实现 SigV4 签名；支持 EC2 实例全生命周期、默认 VPC/新建 VPC+IGW+Route、SG、KeyPair、Ubuntu AMI 自动选择；catalog 覆盖 13 region × (t3/m5/m6i/c5 + g4dn/g5/p3/p4d)。optimizer 默认改为遍历全部已注册云做跨云比价。文档升版 v3。
-- **v2（2026-08-08）**：全项目更名 `cloudpilot → cspilot`、`cpctl → csp`（含 module 路径、CLI、状态目录、环境变量、云上标签/密钥前缀、日志文件），架构文档升版 v2。
+- **v2（2026-08-08）**：全项目更名，CLI/状态目录/环境变量/云上标签/密钥前缀/日志文件统一命名，架构文档升版 v2。
 - **v1（2026-08-08）**：立项。确定范围（完整 SkyPilot 等价物）、位置（`opencode/gpi`，module `github.com/acmestack/gpi`）、CLI 名 `gpi`、首个云 aliyun、CLI+Server 双形态。完成 v1 全部功能骨架并通过测试。
 
 ---

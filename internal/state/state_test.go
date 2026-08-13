@@ -1,7 +1,6 @@
 package state
 
 import (
-	"database/sql"
 	"path/filepath"
 	"testing"
 
@@ -253,64 +252,6 @@ func TestStorePersistsAcrossReopenSQLite(t *testing.T) {
 	}
 	if got.Cloud != "aliyun" {
 		t.Fatalf("cluster not persisted: %+v", got)
-	}
-}
-
-func TestMigrateLegacyTable(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "legacy.db")
-	// Create a legacy single-table DB, bypassing the new backend.
-	old, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := old.Exec(`CREATE TABLE csp_state (
-		kind VARCHAR(32) NOT NULL,
-		name VARCHAR(255) NOT NULL,
-		data MEDIUMTEXT NOT NULL,
-		created_at BIGINT NOT NULL,
-		updated_at BIGINT NOT NULL,
-		PRIMARY KEY (kind, name))`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := old.Exec(`INSERT INTO csp_state (kind, name, data, created_at, updated_at)
-		VALUES ('clusters', 'legacy-cluster', '{"name":"legacy-cluster","cloud":"aws","num_nodes":3}', 111, 222)`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := old.Exec(`INSERT INTO csp_state (kind, name, data, created_at, updated_at)
-		VALUES ('jobs', 'legacy-job', '{"name":"legacy-job","schedule":"@daily"}', 333, 444)`); err != nil {
-		t.Fatal(err)
-	}
-	old.Close()
-
-	// Open with the new backend: migration moves data into per-entity tables.
-	b, err := newSQLBackend("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer b.Close()
-
-	clusters, err := b.LoadClusters()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(clusters) != 1 || clusters["legacy-cluster"].Cloud != "aws" {
-		t.Fatalf("clusters after migrate = %+v", clusters)
-	}
-	jobs, err := b.LoadJobs()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(jobs) != 1 || jobs["legacy-job"].Schedule != "@daily" {
-		t.Fatalf("jobs after migrate = %+v", jobs)
-	}
-
-	// Legacy table should be dropped.
-	var count int
-	if err := b.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='csp_state'`).Scan(&count); err != nil {
-		t.Fatal(err)
-	}
-	if count != 0 {
-		t.Fatal("legacy csp_state table still present")
 	}
 }
 

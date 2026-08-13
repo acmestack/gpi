@@ -3,6 +3,8 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/acmestack/gpi/internal/buildinfo"
 )
 
 // OpenAPISpecJSON renders the OpenAPI 3.0 document (with the given API prefix)
@@ -68,7 +70,7 @@ func swaggerSpec(prefix string) map[string]any {
 		"openapi": "3.0.3",
 		"info": map[string]any{
 			"title":   "gpi API",
-			"version": "0.1.0",
+			"version": buildinfo.Version,
 			"description": "gpi multi-cloud compute scheduling REST API. " +
 				"Authenticate with `Authorization: Bearer <token>` when the server runs with --require-auth.",
 		},

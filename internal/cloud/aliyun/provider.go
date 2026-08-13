@@ -9,6 +9,10 @@ import (
 	"github.com/acmestack/gpi/internal/cloud"
 )
 
+// CloudName is the canonical identifier for this provider, used by Name(),
+// Cloud() and the cloud registry.
+const CloudName = "aliyun"
+
 // Provider implements cloud.Provider for Alibaba Cloud ECS. It may be bound
 // to explicit credentials via NewProvider; otherwise it loads env/disk creds.
 type Provider struct {
@@ -21,7 +25,7 @@ func NewProvider(creds *Credentials) Provider {
 	return Provider{creds: creds}
 }
 
-func (Provider) Name() string { return "aliyun" }
+func (Provider) Name() string { return CloudName }
 
 func (p Provider) client() (*Client, error) {
 	if p.creds != nil {
@@ -90,15 +94,22 @@ func (p Provider) RunInstances(ctx context.Context, spec *cloud.LaunchSpec) ([]*
 		return reused, nil
 	}
 
+	// Decode the aliyun config section once; helpers take it as a param.
+	cfg := LoadConfig()
+
 	// Resolve the default VPC up-front so both the security group and vswitch
 	// reuse the account's existing network (avoids fresh-VPC timing errors).
 	if spec.VPCID == "" {
-		vpcs, err := client.DescribeVpcs(ctx, spec.Region, true)
-		if err != nil {
-			return nil, err
-		}
-		if len(vpcs) > 0 {
-			spec.VPCID = vpcs[0].VpcId
+		if cfg != nil && cfg.VPCID != "" {
+			spec.VPCID = cfg.VPCID
+		} else {
+			vpcs, err := client.DescribeVpcs(ctx, spec.Region, true)
+			if err != nil {
+				return nil, err
+			}
+			if len(vpcs) > 0 {
+				spec.VPCID = vpcs[0].VpcId
+			}
 		}
 	}
 	if spec.ImageID == "" {
@@ -109,16 +120,20 @@ func (p Provider) RunInstances(ctx context.Context, spec *cloud.LaunchSpec) ([]*
 		spec.ImageID = imageID
 	}
 	if spec.SecurityGroupID == "" {
-		groupID, err := p.ensureSecurityGroup(ctx, client, spec.Region, spec.VPCID)
-		if err != nil {
-			return nil, err
+		if cfg != nil && cfg.SecurityGroupID != "" {
+			spec.SecurityGroupID = cfg.SecurityGroupID
+		} else {
+			groupID, err := p.ensureSecurityGroup(ctx, client, spec.Region, spec.VPCID)
+			if err != nil {
+				return nil, err
+			}
+			spec.SecurityGroupID = groupID
 		}
-		spec.SecurityGroupID = groupID
 	}
 
 	// Collect candidate vswitches (default VPC's existing ones, else create a
 	// fresh one). Try each in turn; some zones may be out of stock.
-	vswitches, err := p.vswitchesFor(ctx, client, spec.Region, spec.VPCID, spec.Zone)
+	vswitches, err := p.vswitchesFor(ctx, client, cfg, spec)
 	if err != nil {
 		return nil, err
 	}
@@ -159,9 +174,29 @@ func (p Provider) RunInstances(ctx context.Context, spec *cloud.LaunchSpec) ([]*
 	return nil, lastErr
 }
 
-// vswitchesFor returns candidate vswitches: the default VPC's existing ones, or
-// a freshly created vswitch when none exist.
-func (p Provider) vswitchesFor(ctx context.Context, client *Client, region, vpcID, zone string) ([]cloud.VSwitch, error) {
+// vswitchesFor returns candidate vswitches for the launch spec: vswitches
+// configured by id, the default VPC's existing ones, or a freshly created
+// vswitch when none exist.
+func (p Provider) vswitchesFor(ctx context.Context, client *Client, cfg *Config, spec *cloud.LaunchSpec) ([]cloud.VSwitch, error) {
+	region, vpcID, zone := spec.Region, spec.VPCID, spec.Zone
+	if cfg != nil && len(cfg.VSwitchIDs) > 0 {
+		var out []cloud.VSwitch
+		for _, id := range cfg.VSwitchIDs {
+			vswitches, err := client.ListVSwitches(ctx, region, vpcID)
+			if err != nil {
+				return nil, err
+			}
+			for _, vs := range vswitches {
+				if vs.ID == id {
+					out = append(out, vs)
+					break
+				}
+			}
+		}
+		if len(out) > 0 {
+			return out, nil
+		}
+	}
 	if vpcID == "" {
 		vpcs, err := client.DescribeVpcs(ctx, region, true)
 		if err != nil {
@@ -410,7 +445,7 @@ func (p Provider) ensureSecurityGroup(ctx context.Context, client *Client, regio
 
 func init() {
 	cloud.Register(Provider{})
-	cloud.RegisterFactory("aliyun", func(creds *cloud.Credentials) (cloud.Provider, error) {
+	cloud.RegisterFactory(CloudName, func(creds *cloud.Credentials) (cloud.Provider, error) {
 		return NewProvider(&Credentials{
 			AccessKeyID:     creds.AccessKeyID,
 			AccessKeySecret: creds.SecretAccessKey,

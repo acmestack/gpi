@@ -72,8 +72,7 @@ func (b *sqlBackend) reopen() (*sqlBackend, error) {
 	return newSQLBackend(b.driver, b.dsn)
 }
 
-// ensureTables creates the per-entity tables if missing and migrates any
-// legacy single-table (csp_state) data into them.
+// ensureTables creates the per-entity tables if missing.
 func (b *sqlBackend) ensureTables() error {
 	schemas := []string{
 		`CREATE TABLE IF NOT EXISTS clusters (
@@ -163,74 +162,6 @@ func (b *sqlBackend) ensureTables() error {
 		if _, err := b.db.Exec(q); err != nil {
 			return err
 		}
-	}
-	return b.migrateLegacyTable()
-}
-
-// migrateLegacyTable moves rows from the old single csp_state(kind,name,data)
-// table into the per-entity tables, then drops it. No-op when absent.
-func (b *sqlBackend) migrateLegacyTable() error {
-	rows, err := b.db.Query(`SELECT kind, name, data, created_at, updated_at FROM csp_state`)
-	if err != nil {
-		return nil // legacy table absent; nothing to migrate
-	}
-	defer rows.Close()
-
-	type legacy struct {
-		name      string
-		data      string
-		createdAt int64
-		updatedAt int64
-	}
-	byKind := map[string][]legacy{}
-	for rows.Next() {
-		var kind, name, data string
-		var created, updated int64
-		if err := rows.Scan(&kind, &name, &data, &created, &updated); err != nil {
-			return err
-		}
-		byKind[kind] = append(byKind[kind], legacy{name: name, data: data, createdAt: created, updatedAt: updated})
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	rows.Close()
-
-	tx, err := b.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	for kind, items := range byKind {
-		for _, it := range items {
-			var args []any
-			var q string
-			switch kind {
-			case "clusters":
-				q = `INSERT INTO clusters (name, status, backend, cloud, region, num_nodes, data, created_at, updated_at)
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-				args = []any{it.name, "", "", "", "", 0, it.data, it.createdAt, it.updatedAt}
-			case "services":
-				q = `INSERT INTO services (name, status, replicas, port, data, created_at, updated_at)
-					VALUES (?, ?, ?, ?, ?, ?, ?)`
-				args = []any{it.name, "", 0, 0, it.data, it.createdAt, it.updatedAt}
-			case "jobs":
-				q = `INSERT INTO jobs (name, status, schedule, run_count, fail_count, next_run, data, created_at, updated_at)
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-				args = []any{it.name, "", "", 0, 0, 0, it.data, it.createdAt, it.updatedAt}
-			default:
-				continue
-			}
-			if _, err := tx.Exec(q, args...); err != nil {
-				return err
-			}
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	if _, err := b.db.Exec(`DROP TABLE csp_state`); err != nil {
-		return err
 	}
 	return nil
 }

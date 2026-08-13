@@ -1,0 +1,36 @@
+# gpi user configuration (mirrors SkyPilot's ~/.sky/config.yaml).
+# Copy to $GPI_HOME/config.yaml (default ~/.gpi/config.yaml), or .gpi.yaml in a
+# project directory for project-level settings that layer over the user file.
+#
+# Precedence: CLI flag > task YAML > this config file > built-in defaults.
+
+# --- Cloud network reuse -----------------------------------------------
+# When set, providers reuse your existing cloud network resources instead of
+# auto-creating new ones. Unset entries fall back to the built-in logic
+# (default VPC, auto-created security group, ...).
+
+aws:
+  # VPCs to prefer, matched by Name tag or id (first existing match wins).
+  vpc_names: [prod-vpc]
+  # Subnets to prefer, matched by Name tag or id (in listed order).
+  subnet_names: [ml-subnet]
+  # Reuse this security group (by name or id) instead of creating "gpi-sg".
+  security_group_name: gpi-allow-all
+
+aliyun:
+  # VPC id to reuse.
+  vpc_id: vpc-bp1xxxx
+  # Vswitch ids to reuse (in listed order).
+  vswitch_ids: [vsw-bp1yyy, vsw-bp1zzz]
+  # Security group id to reuse instead of creating one.
+  security_group_id: sg-bp1www
+
+# --- Global defaults (used when the CLI flag is not explicitly passed) ---
+
+# Default cloud filter for gpi launch/optimize (comma-separated).
+allowed_clouds: [aws, aliyun]
+# Default region / zone.
+region: us-east-1
+zone: us-east-1a
+# Default spot preference (--spot overrides).
+use_spot: false

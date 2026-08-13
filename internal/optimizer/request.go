@@ -14,8 +14,8 @@ type Options struct {
 	MaxCandidates int
 }
 
-// DefaultOptions returns Options with NumNodes=1 and MaxCandidates=10.
-func DefaultOptions() *Options {
+// defaultOptions returns Options with NumNodes=1 and MaxCandidates=10.
+func defaultOptions() *Options {
 	return &Options{NumNodes: 1, MaxCandidates: 10}
 }
 
