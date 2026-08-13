@@ -76,16 +76,17 @@ func (p *Provisioner) Launch(ctx context.Context, name string, ts *task.Task, l 
 	}
 
 	spec := &cloud.LaunchSpec{
-		InstanceType: l.InstanceType,
-		Region:       l.Region,
-		Zone:         l.Zone,
-		NumNodes:     l.NumNodes,
-		ImageID:      imageID,
-		KeyName:      keyName,
-		DiskSizeGiB:  diskGiB,
-		NamePrefix:   name,
-		Tags:         tags,
-		UserData:     bootstrapScript(name),
+		InstanceType:       l.InstanceType,
+		Region:             l.Region,
+		Zone:               l.Zone,
+		NumNodes:           l.NumNodes,
+		ImageID:            imageID,
+		KeyName:            keyName,
+		DiskSizeGiB:        diskGiB,
+		NamePrefix:         name,
+		Tags:               tags,
+		UserData:           bootstrapScript(name),
+		ResumeStoppedNodes: true,
 	}
 	if l.UseSpot {
 		spec.SpotStrategy = "SpotAsPriceGo"

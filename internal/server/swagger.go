@@ -193,7 +193,7 @@ func swaggerSpec(prefix string) map[string]any {
 					"required": []any{"task"},
 				},
 				"Task": map[string]any{
-					"type": "object",
+					"type":        "object",
 					"description": "A task to launch: resources to provision plus setup/run commands.",
 					"properties": map[string]any{
 						"name":        map[string]any{"type": "string"},
@@ -214,7 +214,7 @@ func swaggerSpec(prefix string) map[string]any {
 					},
 				},
 				"Resources": map[string]any{
-					"type": "object",
+					"type":        "object",
 					"description": "Compute requirements used to filter candidate instance types.",
 					"properties": map[string]any{
 						"cloud":        map[string]any{"type": "string"},

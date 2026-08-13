@@ -46,6 +46,52 @@ func (p Provider) RunInstances(ctx context.Context, spec *cloud.LaunchSpec) ([]*
 	if spec.Region == "" {
 		spec.Region = client.region
 	}
+
+	// Like SkyPilot, first look up existing instances of this cluster: reuse
+	// running ones, restart stopped ones, and only create when none fit.
+	existing, err := p.ListInstances(ctx, spec.Region, spec.NamePrefix)
+	if err != nil {
+		return nil, fmt.Errorf("list existing instances: %w", err)
+	}
+	var running, stopped []*cloud.Instance
+	for _, inst := range existing {
+		switch inst.Status {
+		case cloud.StatusRunning, cloud.StatusPending, cloud.StatusStarting:
+			running = append(running, inst)
+		case cloud.StatusStopped, cloud.StatusStopping:
+			stopped = append(stopped, inst)
+		}
+	}
+	if len(running) >= spec.NumNodes {
+		// Reuse running instances: keep the first NumNodes in order.
+		reused := running[:spec.NumNodes]
+		for i := range reused {
+			reused[i].Name = spec.NamePrefix
+		}
+		return reused, nil
+	}
+	if len(stopped) > 0 && spec.ResumeStoppedNodes {
+		// Restart stopped instances to make up the shortfall.
+		need := spec.NumNodes - len(running)
+		if len(stopped) > need {
+			stopped = stopped[:need]
+		}
+		ids := make([]string, 0, len(stopped))
+		for _, inst := range stopped {
+			ids = append(ids, inst.ID)
+		}
+		if err := p.StartInstances(ctx, spec.Region, ids); err != nil {
+			return nil, fmt.Errorf("start stopped instances: %w", err)
+		}
+		all := append(running, stopped...)
+		reused := all[:spec.NumNodes]
+		for i := range reused {
+			reused[i].Name = spec.NamePrefix
+			reused[i].Status = cloud.StatusStarting
+		}
+		return reused, nil
+	}
+
 	if spec.ImageID == "" {
 		imageID, err := client.GetImage(ctx, "ubuntu")
 		if err != nil {
