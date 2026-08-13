@@ -128,6 +128,12 @@ func (r *Range) UnmarshalYAML(unmarshal func(any) error) error {
 	return errors.New("range must be a number or a range string like 4+, 4-8")
 }
 
+// MarshalJSON renders a range as its compact string form (e.g. "8+", "4-8",
+// "8") so JSON bodies stay human-friendly and round-trip cleanly.
+func (r *Range) MarshalJSON() ([]byte, error) {
+	return json.Marshal(r.String())
+}
+
 // UnmarshalJSON parses a number or range string from a JSON task body (e.g.
 // `"cpus": "8+"` or `"cpus": 8`), mirroring UnmarshalYAML.
 func (r *Range) UnmarshalJSON(b []byte) error {

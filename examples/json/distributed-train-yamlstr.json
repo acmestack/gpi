@@ -1,0 +1,3 @@
+{
+  "task": "name: distributed-train\nnum_nodes: 2\n\nresources:\n  accelerators: A100:1\n  cpus: 8+\n  memory: 32+\n  labels:\n    role: training\n    tier: prod\n\ntags:\n  owner: ml-team\n  project: llm-finetune\n\nsetup: |\n  pip install -r requirements.txt\n\nrun: |\n  python train.py --num_workers {{cluster.num_workers}} --master_addr {{cluster.head_ip}}"
+}

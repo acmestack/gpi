@@ -1,0 +1,3 @@
+{
+  "task": "name: docker-task\n\n# Run the task inside a local Docker container.\nbackend: docker\n\ndocker:\n  image: pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime\n  volumes:\n    ./data: /workspace/data\n  gpus: 1\n\nsetup: |\n  pip install -r requirements.txt\n\nrun: |\n  python train.py"
+}

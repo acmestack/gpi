@@ -1,0 +1,3 @@
+{
+  "task": "name: existing-cluster-task\n\n# Attach to an already-running host; gpi only orchestrates setup/run over SSH.\nbackend: existing\n\nssh:\n  host: 1.2.3.4\n  user: root\n  key: ~/.ssh/id_rsa\n  port: 22\n\nsetup: |\n  pip install -r requirements.txt\n\nrun: |\n  python train.py --local"
+}

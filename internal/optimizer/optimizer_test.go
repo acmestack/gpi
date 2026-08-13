@@ -447,3 +447,69 @@ func TestParseStrategyErrors(t *testing.T) {
 		t.Fatal("expected error for empty strategy")
 	}
 }
+
+func TestOrderedFailoverResources(t *testing.T) {
+	// Ordered: primary pins aws (m5.large), then fallback to aliyun
+	// (g6.large). Candidates must come from the first group before the second.
+	SetDefaultMeta(testMeta)
+	ts, err := task.Parse([]byte(`resources:
+  cloud: aws
+  region: us-east-1
+  cpus: 2+
+  ordered:
+    - region: us-east-1
+    - cloud: aliyun
+      region: cn-hangzhou
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := &Request{Resources: ts.Resources, Options: &Options{MaxCandidates: 10}}
+	plan, err := Default().Optimize(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Launches) == 0 {
+		t.Fatal("no launches")
+	}
+	// All candidates must belong to the ordered groups.
+	if plan.Launches[0].Cloud != "aws" {
+		t.Fatalf("primary group should be aws first, got %s/%s", plan.Launches[0].Cloud, plan.Launches[0].InstanceType)
+	}
+	// Since only 2+ cpus, both m5.large and g6.large match; aws group (m5.large)
+	// must rank before the aliyun fallback (g6.large).
+	seenAliyun := false
+	for _, l := range plan.Launches {
+		if l.Cloud == "aliyun" {
+			seenAliyun = true
+		}
+		if seenAliyun && l.Cloud == "aws" {
+			t.Fatalf("aws candidate after aliyun fallback: %+v", l)
+		}
+	}
+}
+
+func TestOrderedEntryOverridesDefaults(t *testing.T) {
+	// Outer cloud=aws is the default; the ordered entry overrides to aliyun.
+	SetDefaultMeta(testMeta)
+	ts, err := task.Parse([]byte(`resources:
+  cloud: aws
+  cpus: 2+
+  ordered:
+    - cloud: aliyun
+      region: cn-hangzhou
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ts.Resources.Ordered) != 1 {
+		t.Fatalf("expected 1 ordered entry, got %d", len(ts.Resources.Ordered))
+	}
+	entry := ts.Resources.Ordered[0]
+	if entry.Cloud != "aliyun" {
+		t.Fatalf("entry cloud should be overridden to aliyun, got %q", entry.Cloud)
+	}
+	if entry.Cpus == nil {
+		t.Fatal("entry should inherit cpus default from outer resources")
+	}
+}

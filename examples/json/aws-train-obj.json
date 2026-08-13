@@ -1,0 +1,17 @@
+{
+  "task": {
+    "name": "aws-train",
+    "numNodes": 1,
+    "resources": {
+      "cloud": "aws",
+      "cpus": "96",
+      "memory": "1000+",
+      "accelerators": {
+        "A100": 8
+      }
+    },
+    "backend": "cloud",
+    "setup": "pip install -r requirements.txt\n",
+    "run": "python train.py --epochs 100"
+  }
+}

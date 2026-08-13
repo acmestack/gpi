@@ -13,21 +13,38 @@ import (
 // Task is the parsed representation of a task YAML file: what to launch,
 // how to prepare the nodes, and what command to run.
 type Task struct {
-	Name        string            `yaml:"name" json:"name"`
-	NumNodes    int               `yaml:"num_nodes" json:"num_nodes"`
-	Resources   *Resources        `yaml:"resources" json:"resources"`
-	Workdir     string            `yaml:"workdir" json:"workdir"`
-	FileMounts  map[string]string `yaml:"file_mounts" json:"file_mounts"`
-	Tags        map[string]string `yaml:"tags" json:"tags"`
-	Credentials *Credentials      `yaml:"credentials" json:"credentials"`
-	Backend     string            `yaml:"backend" json:"backend"`
-	SSH         *SSHTarget        `yaml:"ssh,omitempty" json:"ssh,omitempty"`
-	Docker      *DockerSpec       `yaml:"docker,omitempty" json:"docker,omitempty"`
-	Setup       string            `yaml:"setup" json:"setup"`
-	Run         string            `yaml:"run" json:"run"`
-	Envs        map[string]string `yaml:"envs" json:"envs"`
-	Time        string            `yaml:"time" json:"time"`
-	Service     *ServiceSpec      `yaml:"service" json:"service"`
+	// Name is the cluster/task name (defaults to a generated name if empty).
+	Name string `yaml:"name" json:"name"`
+	// NumNodes is the number of nodes to provision; >1 auto-forms a Ray
+	// head/worker cluster (default 1).
+	NumNodes int `yaml:"num_nodes" json:"numNodes"`
+	// Resources declares the compute requirements (cloud/region/instance
+	// type/cpus/memory/accelerators/...); optional ordered failover list.
+	Resources *Resources `yaml:"resources,omitempty" json:"resources,omitempty"`
+	// Workdir is the local working directory uploaded to every node.
+	Workdir string `yaml:"workdir,omitempty" json:"workdir,omitempty"`
+	// FileMounts maps local files to remote paths copied to each node.
+	FileMounts map[string]string `yaml:"file_mounts,omitempty" json:"fileMounts,omitempty"`
+	// Tags are key-value labels attached to the cloud instances.
+	Tags map[string]string `yaml:"tags,omitempty" json:"tags,omitempty"`
+	// Credentials optionally overrides cloud access keys for this task
+	// (provider-agnostic map; falls back to env/disk when absent).
+	Credentials *Credentials `yaml:"credentials,omitempty" json:"credentials,omitempty"`
+	// Backend selects the execution backend: cloud | existing | docker | local
+	// (default cloud).
+	Backend string `yaml:"backend,omitempty" json:"backend,omitempty"`
+	// SSH configures the existing host to attach to (backend: existing).
+	SSH *SSHTarget `yaml:"ssh,omitempty" json:"ssh,omitempty"`
+	// Docker configures container execution (backend: docker).
+	Docker *DockerSpec `yaml:"docker,omitempty" json:"docker,omitempty"`
+	// Setup is a shell script run once on every node before the task.
+	Setup string `yaml:"setup,omitempty" json:"setup,omitempty"`
+	// Run is the main command executed on the head node.
+	Run string `yaml:"run,omitempty" json:"run,omitempty"`
+	// Envs are extra environment variables injected into the task run.
+	Envs map[string]string `yaml:"envs,omitempty" json:"envs,omitempty"`
+	// Service exposes the task as a replicated service (SkyServe analog).
+	Service *ServiceSpec `yaml:"service,omitempty" json:"service,omitempty"`
 }
 
 // Backend names for the execution backend abstraction.
@@ -44,62 +61,6 @@ const (
 
 // ValidBackends lists all supported execution backends.
 var ValidBackends = []string{BackendCloud, BackendExisting, BackendDocker, BackendLocal}
-
-// SSHTarget describes an existing host to attach to (backend: existing).
-type SSHTarget struct {
-	Host string `yaml:"host" json:"host"`
-	User string `yaml:"user" json:"user"`
-	Key  string `yaml:"key" json:"key"`
-	Port int    `yaml:"port" json:"port"`
-}
-
-// DockerSpec configures a docker execution (backend: docker).
-type DockerSpec struct {
-	Image   string            `yaml:"image" json:"image"`
-	Volumes map[string]string `yaml:"volumes" json:"volumes"`
-	Envs    map[string]string `yaml:"envs" json:"envs"`
-	Gpus    int               `yaml:"gpus" json:"gpus"`
-}
-
-// Credentials holds optional per-task cloud access keys. If provided they are
-// used for this task's launch; otherwise gpi falls back to the default
-// env/disk credential loading.
-type Credentials struct {
-	AWS    *AWSCreds    `yaml:"aws,omitempty" json:"aws,omitempty"`
-	Aliyun *AliyunCreds `yaml:"aliyun,omitempty" json:"aliyun,omitempty"`
-}
-
-// AWSCreds holds per-task AWS access keys.
-type AWSCreds struct {
-	AccessKeyID     string `yaml:"access_key_id" json:"access_key_id"`
-	SecretAccessKey string `yaml:"secret_access_key" json:"secret_access_key"`
-	Region          string `yaml:"region" json:"region"`
-}
-
-// AliyunCreds holds per-task Alibaba Cloud access keys.
-type AliyunCreds struct {
-	AccessKeyID     string `yaml:"access_key_id" json:"access_key_id"`
-	AccessKeySecret string `yaml:"access_key_secret" json:"access_key_secret"`
-}
-
-// CloudCredentials is a provider-agnostic view used by the provisioner.
-type CloudCredentials struct {
-	AccessKeyID     string
-	SecretAccessKey string
-	Region          string
-}
-
-// ServiceSpec describes how to expose a task as a replicated service.
-type ServiceSpec struct {
-	Replicas                 int    `yaml:"replicas" json:"replicas"`
-	Port                     int    `yaml:"port" json:"port"`
-	HealthCheck              string `yaml:"health_check" json:"health_check"`
-	WorkingDir               string `yaml:"working_dir" json:"working_dir"`
-	Run                      string `yaml:"run" json:"run"`
-	ReadyServer              string `yaml:"ready_server" json:"ready_server"`
-	Ports                    []int  `yaml:"ports" json:"ports"`
-	TargetConcurrentSessions int    `yaml:"target_concurrent_sessions" json:"target_concurrent_sessions"`
-}
 
 // Load reads and parses a task YAML file from disk.
 func Load(path string) (*Task, error) {
@@ -188,53 +149,6 @@ func (t *Task) validateBackendConfig() error {
 	return nil
 }
 
-// Validate checks that any supplied credential block is complete (access key
-// plus secret). A nil Credentials is valid (falls back to default loading).
-func (c *Credentials) Validate() error {
-	if c == nil {
-		return nil
-	}
-	if c.AWS != nil {
-		if c.AWS.AccessKeyID == "" || c.AWS.SecretAccessKey == "" {
-			return errors.New("aws credentials require access_key_id and secret_access_key")
-		}
-	}
-	if c.Aliyun != nil {
-		if c.Aliyun.AccessKeyID == "" || c.Aliyun.AccessKeySecret == "" {
-			return errors.New("aliyun credentials require access_key_id and access_key_secret")
-		}
-	}
-	return nil
-}
-
-// ForCloud returns the cloud-level credentials for the given provider name,
-// or nil if no matching credential block was supplied.
-func (c *Credentials) ForCloud(name string) *CloudCredentials {
-	if c == nil {
-		return nil
-	}
-	switch name {
-	case "aws":
-		if c.AWS == nil {
-			return nil
-		}
-		return &CloudCredentials{
-			AccessKeyID:     c.AWS.AccessKeyID,
-			SecretAccessKey: c.AWS.SecretAccessKey,
-			Region:          c.AWS.Region,
-		}
-	case "aliyun":
-		if c.Aliyun == nil {
-			return nil
-		}
-		return &CloudCredentials{
-			AccessKeyID:     c.Aliyun.AccessKeyID,
-			SecretAccessKey: c.Aliyun.AccessKeySecret,
-		}
-	}
-	return nil
-}
-
 // Command returns the run command, or "" if the task has none.
 func (t *Task) Command() string {
 	if t == nil || strings.TrimSpace(t.Run) == "" {
@@ -279,8 +193,6 @@ func reflectNonDefault(t *Task, fieldName string) bool {
 		return t.Run != ""
 	case "envs":
 		return len(t.Envs) > 0
-	case "time":
-		return t.Time != ""
 	case "service":
 		return t.Service != nil
 	}

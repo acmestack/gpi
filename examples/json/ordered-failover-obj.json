@@ -1,0 +1,33 @@
+{
+  "task": {
+    "name": "ordered-failover",
+    "numNodes": 1,
+    "resources": {
+      "cpus": "8+",
+      "accelerators": {
+        "A100": 1
+      },
+      "ordered": [
+        {
+          "cloud": "aws",
+          "region": "us-east-1",
+          "cpus": "8+",
+          "accelerators": {
+            "A100": 1
+          }
+        },
+        {
+          "cloud": "aliyun",
+          "region": "cn-hangzhou",
+          "cpus": "8+",
+          "accelerators": {
+            "A100": 1
+          }
+        }
+      ]
+    },
+    "backend": "cloud",
+    "setup": "pip install -r requirements.txt\n",
+    "run": "python train.py --epochs 100\n"
+  }
+}

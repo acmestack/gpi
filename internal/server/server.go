@@ -239,13 +239,13 @@ func (s *Server) scheduler(ctx context.Context) {
 type launchRequest struct {
 	Name     string `json:"name"`
 	TaskYaml string `json:"task"`
-	Cluster  string `json:"cluster_name"`
+	Cluster  string `json:"clusterName"`
 	Cloud    string `json:"cloud"`
 	Region   string `json:"region"`
-	NumNodes int    `json:"num_nodes"`
-	UseSpot  bool   `json:"use_spot"`
-	DryRun   bool   `json:"dry_run"`
-	RunTask  bool   `json:"run_task"`
+	NumNodes int    `json:"numNodes"`
+	UseSpot  bool   `json:"useSpot"`
+	DryRun   bool   `json:"dryRun"`
+	RunTask  bool   `json:"runTask"`
 	// Optimizer selects the placement optimizer or strategy, e.g. "cost",
 	// "time", or "cost,time". Empty defaults to "cost".
 	Optimizer string `json:"optimizer"`
@@ -302,10 +302,10 @@ type taskLaunchRequest struct {
 	Task     *task.Task `json:"task"`
 	Cloud    string     `json:"cloud"`
 	Region   string     `json:"region"`
-	NumNodes int        `json:"num_nodes"`
-	UseSpot  bool       `json:"use_spot"`
-	DryRun   bool       `json:"dry_run"`
-	RunTask  bool       `json:"run_task"`
+	NumNodes int        `json:"numNodes"`
+	UseSpot  bool       `json:"useSpot"`
+	DryRun   bool       `json:"dryRun"`
+	RunTask  bool       `json:"runTask"`
 	// Optimizer selects the placement optimizer or strategy, e.g. "cost",
 	// "time", or "cost,time". Empty defaults to "cost".
 	Optimizer string `json:"optimizer"`
@@ -456,12 +456,13 @@ func (s *Server) handleListJobs(w http.ResponseWriter, _ *http.Request) {
 }
 
 type jobSubmitRequest struct {
-	Name     string `json:"name"`
-	TaskPath string `json:"task_path"`
-	TaskYaml string `json:"task"`
-	Schedule string `json:"schedule"`
-	Retries  int    `json:"retries"`
-	RunNow   bool   `json:"run_now"`
+	Name      string `json:"name"`
+	TaskPath  string `json:"task_path"`
+	TaskYaml  string `json:"task"`
+	Schedule  string `json:"schedule"`
+	Retries   int    `json:"retries"`
+	RunNow    bool   `json:"run_now"`
+	Optimizer string `json:"optimizer"`
 }
 
 func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
@@ -483,7 +484,7 @@ func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, fmt.Errorf("task_path or task is required"))
 		return
 	}
-	job, err := s.Jobs.Submit(req.Name, taskPath, req.Schedule, req.Retries)
+	job, err := s.Jobs.Submit(req.Name, taskPath, req.Schedule, req.Retries, req.Optimizer)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err)
 		return

@@ -1,6 +1,6 @@
 # Gpi 架构设计文档
 
-- **文档版本**：v53（2026-08-13）
+- **文档版本**：v61（2026-08-13）
 - **module**：`github.com/acmestack/gpi`
 - **CLI**：`gpi`（二进制 `cmd/gpi`）
 - **目标**：参考 SkyPilot 模式，用 Go 重写实现多云算力调度（multi-cloud compute scheduling），对标 SkyPilot 的 launcher / optimizer / SkyServe / Sky Jobs / API server。
@@ -194,8 +194,9 @@ internal/
 
 - `Range`：支持 `4`（精确）、`8+`（下界）、`-8`（上界）、`4-8`（区间）。
 - `Accelerators`：`map[string]int`，支持 `A100`、`A100:4`、`A100:4,V100`、列表、map 形式。
-- `Resources`：cloud/region/zone/instance_type/cpus/memory/disk_size/accelerators/use_spot/labels。
-- `Task`：name/num_nodes/resources/workdir/file_mounts/setup/run/envs/time/service。
+- `Resources`：cloud/region/zone/instance_type/cpus/memory/disk_size/accelerators/use_spot/labels/ordered。
+  - **`ordered`（failover 候选）**：可选 `[]*Resources`，对标 SkyPilot `resources.ordered`——外层字段作为所有候选的默认值，条目覆盖默认；optimizer 按序为每组生成候选并串联成 failover Plan（第一组排最前，其后依次）。不指定时仅用本组资源。
+- `Task`：name/num_nodes/resources/workdir/file_mounts/setup/run/envs/service。
 - `ServiceSpec`：replicas/port/run/health_check 等（供 serve 使用）。
 
 ## 5. Catalog 与 Optimizer
@@ -261,11 +262,11 @@ Provider 若同时实现 `catalog.Source`（元数据契约，见 §5），`clou
 4. 节点角色：`num_nodes=1` 单节点无角色；`num_nodes>1` 时第 1 个节点为 head(master)，其余为 worker。
 5. `RunTask`：等待全部节点 SSH 可达 → 可选 rsync workdir（到 head）→ setup 在**所有节点并行**执行（多节点）→ run 在 **head** 上执行（对标 `ray exec`），行级流式输出。
 6. **标签（cloud tags + Ray node labels）**：对云而言 tags 与 labels 本质相同（都是实例 key-value 标签），因此两者会**合并**后写入云实例（`LaunchSpec.Tags`，与内置 `gpi:cluster`/`gpi:cloud` 并存）；冲突时顶层 `tags:` 优先。其中 `resources.labels:` 除写入云实例外，还会以 `ray start --labels='{"k":"v"}'` 注入 head 与全部 worker，供 Ray 调度（`ray.util` 按 label 放置）使用。
-7. **动态 AK/SK（credentials）**：任务 YAML 顶层 `credentials:`（按云分块 aws/aliyun）提供本次任务专属 AccessKey/Secret；若提供了则本次 launch 及后续 down/stop/start 复用该凭据，否则回退到现有 env/磁盘默认加载（`LoadCredentials`）。凭据会持久化到集群状态（`state.CloudCreds`），供生命周期操作使用。
+ 7. **动态 AK/SK（credentials）**：任务 YAML 顶层 `credentials:`（云无关通用 map `credentials: { <cloud>: { access_key_id, secret_access_key, region } }`，任意云可复用，无需在 task 包加类型）提供本次任务专属 AccessKey/Secret；若提供了则本次 launch 及后续 down/stop/start 复用该凭据，否则回退到现有 env/磁盘默认加载（`LoadCredentials`）。凭据会持久化到集群状态（`state.CloudCreds`），供生命周期操作使用。
 8. `Exec`：对 head node 执行任意命令。
 9. `Down/Stop/Start`：调云侧 API（复用集群创建时的凭据）并同步本地状态。
 
-> 依赖注入：任务 `run` 内可用 `{{cluster.head_ip}}`（head 私网 IP）与 `{{cluster.num_workers}}` 拼接分布式训练参数，见 `examples/distributed-train.yaml`。凭据示例见 `examples/with-credentials.yaml`。集群状态/拓扑可用 `gpi cluster status|nodes` 查看（含 labels/tags）。
+> 依赖注入：任务 `run` 内可用 `{{cluster.head_ip}}`（head 私网 IP）与 `{{cluster.num_workers}}` 拼接分布式训练参数，见 `examples/yaml/distributed-train.yaml`。凭据示例见 `examples/yaml/with-credentials.yaml`。集群状态/拓扑可用 `gpi cluster status|nodes` 查看（含 labels/tags）。
 
 ## 8.1 执行后端（internal/backend）
 
@@ -279,7 +280,7 @@ Provider 若同时实现 `catalog.Source`（元数据契约，见 §5），`clou
 | `local` | 本机直接执行 setup/run | 无 | down=仅删记录；stop/start 不支持 |
 
 - 非 cloud 后端不经过 optimizer（无 placement），`gpi launch` 直接执行。
-- 示例：`examples/existing-cluster.yaml`、`examples/docker-task.yaml`、`examples/local-task.yaml`。
+- 示例：`examples/yaml/existing-cluster.yaml`、`examples/yaml/docker-task.yaml`、`examples/yaml/local-task.yaml`。
 
 ## 9. 状态存储（internal/state）
 
@@ -449,6 +450,55 @@ gpi 里有**两个完全不同的 `config`**，名字相同但职责、生命周
   - docs 端点公开（不要求 token），方便查看接口文档。
 - **在线查看**：最新 OpenAPI 规范提交在仓库根 `openapi.json`（`make openapi` 重新生成）。**GitLab 内建 OpenAPI 渲染**，打开仓库该文件即得交互式 UI（无需 GitHub Pages）；GitHub 只做 JSON 高亮，需要交互时粘贴到 [Swagger Editor](https://editor.swagger.io)。K8s Deployment 默认不开启 `--docs`。
 
+## 9.2 serve 与 server 的区别
+
+两个命令名字只差一个字母，但完全是两码事——**一个是"部署"，一个是"接口"**：
+
+- **`gpi serve`** = **把任务部署成常驻服务**。你有一个跑模型的脚本，想让它变成一个一直对外提供能力的服务（多个副本 + 固定端口），用 `gpi serve up S.yaml`。
+- **`gpi server`** = **启动 gpi 自己的 HTTP API 服务**。你不想用命令行，而是想让别人通过 HTTP 调 gpi（launch 任务、查集群、提交 job……），用 `gpi server start`。
+
+| | `gpi serve` | `gpi server` |
+|---|---|---|
+| 一句话 | "把我的任务变成服务" | "把 gpi 变成可被 HTTP 调用的服务" |
+| 服务的是谁 | 你的**任务**（模型/脚本） | **gpi 本身**（控制面 API） |
+| 命令 | `gpi serve up/status/down S.yaml` | `gpi server start`、`gpi server token ...` |
+| 产出 | `state.Service`：多个副本集群 + 端口 + 访问端点 | HTTP 端点 `/api/v1/gpi/...` |
+| 后台常驻？ | 副本是常驻的 | 是，一个 API 进程 + job scheduler |
+
+**示例：部署一个 LLM 服务**
+
+```yaml
+# llm-service.yaml
+service:
+  replicas: 2
+  port: 8000
+resources:
+  accelerators: A100:1
+run: python serve_llm.py
+```
+
+```bash
+# ① serve：把上面这个任务部署成 2 个副本的常驻服务
+gpi serve up llm-service.yaml
+
+# ② server：如果你想用 HTTP 管理这个 gpi 实例（而不是命令行）
+gpi server start
+```
+
+**两者的关系（调用链）**
+
+```
+HTTP 调用方
+    │  curl -X POST /api/v1/gpi/services/up   ← server 提供的 API
+    ▼
+gpi server（internal/server）—— 负责解析 HTTP、鉴权、路由
+    │  内部调用 serve.Manager.Up(...)
+    ▼
+gpi serve（internal/serve）—— 负责真的去云上拉起副本、记录 Service 状态
+```
+
+> 记忆口诀：**serve 是"把任务 serve 出去"（部署你的应用）；server 是"gpi 自己当 server"（对外提供 API）**。前者面向你的业务，后者面向 gpi 的使用者。
+
 ## 10. 命令参考（gpi）
 
 | 命令 | 说明 | 对标 |
@@ -489,7 +539,7 @@ gpi 里有**两个完全不同的 `config`**，名字相同但职责、生命周
 
 **task 的两种输入方式**：
 - `clusters/{name}/launch`：请求体 `task` 为 **YAML 字符串**（兼容 task 文件内容）。
-- `tasks/{name}/launch`：请求体 `task` 为 **Task 结构体 JSON**（结构化字段，如 `{"name":..,"num_nodes":..,"resources":{"accelerators":{"A100":1},"cpus":"8+"},"run":".."}`），`task` 必填。
+- `tasks/{name}/launch`：请求体 `task` 为 **Task 结构体 JSON**（结构化字段，小驼峰，如 `{"name":"..","numNodes":..,"resources":{"accelerators":{"A100":1},"cpus":"8+"},"run":".."}`），`task` 必填。
 
 ### 11.1 可定制响应结构（ResponseEncoder）
 
@@ -539,11 +589,17 @@ gpi 里有**两个完全不同的 `config`**，名字相同但职责、生命周
 
 ## 版本记录
 
+- **v61（2026-08-13）**：examples/json 命名改为 `{scene}-obj.json`（Task 结构体形式）/`{scene}-yamlstr.json`（YAML 字符串形式）；删除死字段 `Task.Time`（无业务消费，运行时估算用 `Resources.TimeSec`），同步 swagger/openapi。文档升版 v61。
+- **v60（2026-08-13）**：task 包拆分——`Credentials` 独立 `credentials.go`、子规格（SSHTarget/DockerSpec/ServiceSpec）独立 `spec.go`，`task.go` 只留 Task 与解析方法；Task 每字段加注释、可选字段补 omitempty。`Range.MarshalJSON` 输出紧凑字符串（`"8+"`/`"4-8"`），JSON 请求体友好。examples 拆为 `examples/yaml/`（任务文件）+ `examples/json/`（API 请求体）。swagger Task schema 补可选字段说明 + SSHTarget/DockerSpec/ServiceSpec 子 schema。文档升版 v60。
+- **v59（2026-08-13）**：task 包 json tag 统一**小驼峰**（`num_nodes`→`numNodes` 等，yaml 保持 snake）；server API DTO（launch/taskLaunch）json tag 同步 camel 对齐 swagger；`Credentials` 加 omitempty。`/tasks/{name}/launch` 请求体字段改 camel。文档升版 v59。
+- **v58（2026-08-13）**：`task.Credentials` 泛化——从按云硬编码 struct（aws/aliyun）改为云无关通用 map `credentials: { <cloud>: {...} }`，新云直接复用无需改 task 包；`ForCloud`/`Validate` 去 switch；兼容 aliyun 旧字段 `access_key_secret`。文档升版 v58。
+- **v57（2026-08-13）**：`Resources` 新增 `ordered`（failover 候选，对标 SkyPilot `resources.ordered`）——外层字段作默认、条目覆盖；optimizer 按序为每组生成候选并串联成 failover Plan（组间保持顺序，组内按 metric 排序）。文档升版 v57。
+- **v56（2026-08-13）**：新增 §9.2"serve 与 server 的区别"——`gpi serve`（服务化部署，对标 SkyServe）vs `gpi server`（HTTP API 控制面），含对比表与一句话记忆。文档升版 v56。
 - **v55（2026-08-13）**：新增 §9.0 数据库表结构——sqlite/mysql 全部 8 张表的列/类型/约束/主键对比表 + 完整 DDL（`ensureTables`），file/redis 映射说明。文档升版 v55。
 - **v54（2026-08-13）**：新增 §9.1.1"两个 config 的区分"——`internal/config` 包（文件配置，单机客户端）vs `internal/state` 的 `config` 表（运行时 KV，服务端多实例），含对比表与一句话记忆，消除同名混淆。文档升版 v54。
 - **v53（2026-08-13）**：`lexicographicOptimizer` 独立为 `lexicographic.go`（算法实现），`strategy.go` 只留策略构造（`NewStrategy`/`ParseStrategy`）+ 内置注册。文档升版 v53。
 - **v52（2026-08-13）**：optimizer 命名调整——`Objective` → `Metric`（打分指标），`costObjective`/`timeObjective` → `costMetric`/`timeMetric`，`RegisterObjective` → `RegisterMetric`，`objective.go` → `metric.go`；`strategyOptimizer` → `lexicographicOptimizer`（字典序多指标排序），对外 `NewStrategy`/`ParseStrategy` 保留。文档升版 v52。
-- **v51（2026-08-09）**：移除 GitHub Pages（`.github/workflows/pages.yml`、`docs/apis/index.html`、`swagger-initializer.js`）——GitHub 不支持内建 OpenAPI 渲染。`openapi.json` 改提交到**仓库根**，利用 **GitLab 内建 OpenAPI viewer** 在线交互查看（项目托管在 code.cestc.cn）。文档升版 v51。
+- **v51（2026-08-09）**：移除 GitHub Pages（`.github/workflows/pages.yml`、`docs/apis/index.html`、`swagger-initializer.js`）——GitHub 不支持内建 OpenAPI 渲染。`openapi.json` 改提交到**仓库根**，利用 **GitLab 内建 OpenAPI viewer** 在线交互查看。文档升版 v51。
 - **v50（2026-08-09）**：optimizer 包再调整——`Optimizer` 接口与 `Get`/`Resolve` 解析入口移回 `optimizer.go`，`registry.go` 只保留命名注册表（`Register`/`Names`/`Default`/`DefaultName`）。文档升版 v50。
 - **v49（2026-08-09）**：①`RunInstances` 参考 SkyPilot 改为**先 list 再复用/重启/创建**——按 cluster 名列出已有实例，running 足够直接复用、stopped（`ResumeStoppedNodes`）`StartInstances` 重启复用、否则新建（aliyun + aws，`LaunchSpec.ResumeStoppedNodes`，provisioner 默认开启）；②optimizer 包按职责拆分（plan/request/meta/registry/candidate/objective/strategy/cost/time）；③扩展指南补"Objective vs Optimizer"差异。文档升版 v49。
 - **v48（2026-08-09）**：OpenAPI 在线预览路径改为 `https://acmestack.github.io/gpi/apis`——Swagger UI 三件套（index.html/swagger-initializer.js/openapi.json）移到 `docs/apis/`，`make openapi` 输出到 `docs/apis/openapi.json`。文档升版 v48。
@@ -588,7 +644,7 @@ gpi 里有**两个完全不同的 `config`**，名字相同但职责、生命周
 - **v9（2026-08-08）**：持久化可插拔。抽象 `state.Backend`，支持 file（默认）/sqlite/mysql 三后端，按 `GPI_STATE_BACKEND` 配置选择。文档升版 v9。
 - **v8（2026-08-08）**：新增 gpilet 节点 agent（对标 skylet）。`cmd/gpilet` + `internal/gpilet`：`gpilet serve` 常驻采集 CPU/内存/磁盘/GPU/Ray 状态写入 `/var/lib/gpilet/status.json`；Launch 自动上传并拉起；`gpi cluster nodes C --health` 读取实时健康。文档升版 v8。
 - **v7（2026-08-08）**：tags 与 labels 合并。对云而言两者都是实例 key-value 标签，现统一合并写入云实例（`LaunchSpec.Tags`，顶层 `tags:` 优先）；`resources.labels:` 同时注入 Ray。文档升版 v7。
-- **v6（2026-08-08）**：支持每次任务动态 AK/SK。任务顶层 `credentials:`（aws/aliyun 分块）提供专属凭据则优先使用，否则回退 env/磁盘默认加载；凭据持久化到集群状态（`state.CloudCreds`），Down/Stop/Start 复用。示例 `examples/with-credentials.yaml`。文档升版 v6。
+- **v6（2026-08-08）**：支持每次任务动态 AK/SK。任务顶层 `credentials:`（aws/aliyun 分块）提供专属凭据则优先使用，否则回退 env/磁盘默认加载；凭据持久化到集群状态（`state.CloudCreds`），Down/Stop/Start 复用。示例 `examples/yaml/with-credentials.yaml`。文档升版 v6。
 - **v5（2026-08-08）**：支持自定义 tags 与 labels。任务顶层 `tags:` 合并进云实例标签；`resources.labels:` 注入 `ray start --labels`（head+worker），并持久化到集群状态、`gpi cluster status` 展示。文档升版 v5。
 - **v4（2026-08-08）**：补齐 Ray 集群架构。`num_nodes>1` 时节点带角色 head/worker，launch 后自动 bootstrap Ray（head `ray start --head`，worker 加入）；setup 并行跑全部节点、run 在 head；新增 `gpi cluster status|nodes`、`gpi status` 展示角色统计、任务内 `{{cluster.head_ip}}/{{cluster.num_workers}}` 注入。文档升版 v4。
 - **v3（2026-08-08）**：实现 AWS Provider（`internal/cloud/aws` + `internal/catalog/aws*`）。零 SDK 依赖，用标准库实现 SigV4 签名；支持 EC2 实例全生命周期、默认 VPC/新建 VPC+IGW+Route、SG、KeyPair、Ubuntu AMI 自动选择；catalog 覆盖 13 region × (t3/m5/m6i/c5 + g4dn/g5/p3/p4d)。optimizer 默认改为遍历全部已注册云做跨云比价。文档升版 v3。

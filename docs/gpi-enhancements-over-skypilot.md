@@ -30,7 +30,7 @@
   - 提供了 → 本次 launch 及后续 down/stop/start 复用该凭据；
   - 未提供 → 回退到现有 env/磁盘默认加载（`LoadCredentials`）。
   - 凭据持久化到集群状态（`state.CloudCreds`），生命周期操作无需重新指定。
-  - 示例：`examples/with-credentials.yaml`。
+  - 示例：`examples/yaml/with-credentials.yaml`。
 
 ## 3. tags / labels 统一合并
 
@@ -48,7 +48,7 @@
   - setup 在全部节点并行执行，run 在 head 执行；
   - 任务内注入 `{{cluster.head_ip}}` / `{{cluster.num_workers}}`，便于拼接分布式训练参数；
   - `gpi cluster status|nodes` 查看拓扑与角色。
-  - 示例：`examples/distributed-train.yaml`。
+  - 示例：`examples/yaml/distributed-train.yaml`。
 
 ## 5. 单进程双形态（CLI + Server）
 

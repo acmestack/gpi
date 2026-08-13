@@ -12,6 +12,7 @@ type Job struct {
 	Schedule   string `json:"schedule"`
 	TaskPath   string `json:"task_path,omitempty"`
 	Retries    int    `json:"retries"`
+	Optimizer  string `json:"optimizer,omitempty"`
 	Cluster    string `json:"cluster,omitempty"`
 	Status     string `json:"status"`
 	RunCount   int    `json:"run_count"`

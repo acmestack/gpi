@@ -1,0 +1,3 @@
+{
+  "task": "name: local-task\n\n# Run directly on the local machine (no provisioning).\nbackend: local\n\nsetup: |\n  python3 -c \"print('local setup ok')\"\n\nrun: |\n  python3 -c \"print('hello from local backend')\""
+}

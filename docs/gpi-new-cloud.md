@@ -1,6 +1,6 @@
 # 接入新云指南（How to Add a New Cloud）
 
-- **文档版本**：v13（2026-08-13）
+- **文档版本**：v15（2026-08-13）
 - **适用项目**：Gpi（`github.com/acmestack/gpi`）
 
 ## 总览：一个云 = 一个包 + 一个 struct
@@ -118,7 +118,7 @@ go build ./... && go vet ./... && go test ./...
 GOOS=linux GOARCH=amd64 go build ./cmd/gpi
 GOOS=darwin GOARCH=arm64 go build ./cmd/gpi
 # 真实测试（需要有该云凭据）
-gpi optimize examples/train.yaml --cloud foo --region region-a
+gpi optimize examples/yaml/train.yaml --cloud foo --region region-a
 ```
 
 ## 设计说明
@@ -128,7 +128,7 @@ gpi optimize examples/train.yaml --cloud foo --region region-a
 - **TTL 缓存如何工作？** `metacache.Cache` 按 (cloud, region) 缓存规格/价格，`SpecsTTL()`/`PriceTTL()` 决定各云刷新频率；拉取失败保留旧数据（stale-while-error），`PricesForced` 绕过 TTL 强制刷新（`gpi launch` 确认前用）。
 - **为什么要有聚合包 `internal/cloud/imports`？** Go 中包必须被 import 其 `init()` 才会执行，无法免 import。聚合包把"所有云的空白导入"集中到一个文件，且由 `gen.go` 自动生成，挂在 `make build` 的构建前置——新云只需建包，**构建时自动带上，零手动操作**。
 - **Optimizer 如何消费元数据？** 内置 `cost`/`time` 优化器及 `cost,time` 等策略经 `optimizer.Meta` 访问器读取规格并匹配任务资源，再对候选**并发拉价**（候选截断 + 缺价回退，见架构文档）。新云实现 `Provider.FetchSpecs/FetchPrices` 后自动被覆盖，无需改动 optimizer。
-- **凭据来源**：provider 的 `NewClient` 负责从 env（`FOO_ACCESS_KEY_ID`/`FOO_SECRET` 或云默认配置文件）加载；任务级 `credentials:` 通过 `cloud.RegisterFactory` 注入。
+- **凭据来源**：provider 的 `NewClient` 负责从 env（`FOO_ACCESS_KEY_ID`/`FOO_SECRET` 或云默认配置文件）加载；任务级 `credentials:` 通过 `cloud.RegisterFactory` 注入。`task.Credentials` 是**云无关的通用 map**（`credentials: { <cloud>: { access_key_id, secret_access_key, region } }`），新云直接复用，无需在 task 包加任何类型或 switch。
 - **云专项配置放在哪？** 在**每个云自己的包**里（`internal/cloud/<cloud>/config.go`），`internal/config` 只做云无关的加载/层叠合并。这样新增云**不改 `internal/config`**——正是 `cloud.Provider` 接口不暴露 `Config()` 的原因：接口方法没法为不同云返回各自类型（只能 `any`，丢类型安全），而云段本来就只有 provider 自己消费。
 
 ## 演进方向
@@ -138,6 +138,7 @@ gpi optimize examples/train.yaml --cloud foo --region region-a
 
 ## 版本记录
 
+- **v14（2026-08-13）**：任务级 `credentials:` 泛化——`task.Credentials` 改为云无关的通用 map（`credentials: { <cloud>: { access_key_id, secret_access_key, region } }`），新云直接复用、无需改 task 包；兼容 aliyun 旧字段 `access_key_secret`。
 - **v13（2026-08-13）**：新增云专项配置（`config.go` + `config.Load().Section(CloudName, &cfg)`）；明确 `internal/config` 云无关、接口不加 `Config()`。
 - **v12（2026-08-09）**：移除文档内"变更规则"行（规则统一到 `AGENTS.md`）；补齐版本变更记录区。
 - **v11（2026-08-09）**：`--optimizer` 支持策略（`cost,time` 等）；内置优化器描述更新为 cost/time。

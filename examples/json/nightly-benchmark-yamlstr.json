@@ -1,0 +1,3 @@
+{
+  "task": "name: nightly-benchmark\nnum_nodes: 1\n\nresources:\n  cpus: 4\n  memory: 16\n\nsetup: |\n  echo \"setting up benchmark env\"\n\nrun: |\n  echo \"running nightly benchmark\""
+}

@@ -1,0 +1,5 @@
+{
+  "task": "name: llm\nnum_nodes: 1\n\nresources:\n  cpus: 2+\n  memory: 8+\n\nservice:\n  replicas: 2\n  port: 8080\n  run: python -m http.server 8080",
+  "cloud": "aliyun",
+  "region": "cn-hangzhou"
+}

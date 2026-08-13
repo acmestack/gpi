@@ -1,0 +1,17 @@
+{
+  "task": {
+    "name": "train",
+    "numNodes": 1,
+    "resources": {
+      "cpus": "8+",
+      "memory": "32+",
+      "diskSize": "100",
+      "accelerators": {
+        "A100": 1
+      }
+    },
+    "backend": "cloud",
+    "setup": "pip install -r requirements.txt\n",
+    "run": "python train.py --epochs 100\n"
+  }
+}

@@ -1,6 +1,7 @@
 package task
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -179,4 +180,81 @@ func TestCredentialsValidation(t *testing.T) {
 	if _, err := Parse([]byte("credentials:\n  aws:\n    access_key_id: a\n    secret_access_key: b\nrun: hi\n")); err != nil {
 		t.Fatalf("complete aws creds should be valid: %v", err)
 	}
+}
+
+func TestCredentialsGenericCloud(t *testing.T) {
+	// A brand-new cloud (gcp) works with the generic map — no code change.
+	ts, err := Parse([]byte(`
+name: gcp
+resources:
+  cpus: 2+
+credentials:
+  gcp:
+    access_key_id: GCP123
+    secret_access_key: gcps
+    region: us-central1
+run: echo
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := ts.Credentials.ForCloud("gcp")
+	if g == nil || g.AccessKeyID != "GCP123" || g.SecretAccessKey != "gcps" || g.Region != "us-central1" {
+		t.Fatalf("bad gcp creds: %+v", g)
+	}
+}
+
+func TestCredentialsLegacySecretField(t *testing.T) {
+	// aliyun's legacy access_key_secret still maps to SecretAccessKey.
+	ts, err := Parse([]byte(`
+name: ali
+credentials:
+  aliyun:
+    access_key_id: LTAI
+    access_key_secret: als
+run: echo
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := ts.Credentials.ForCloud("aliyun")
+	if a == nil || a.SecretAccessKey != "als" {
+		t.Fatalf("bad aliyun creds: %+v", a)
+	}
+}
+
+func TestCredentialsJSONCamelAndOmitEmpty(t *testing.T) {
+	ts, err := Parse([]byte(`
+name: c
+credentials:
+  aws:
+    access_key_id: AK
+    secret_access_key: SK
+run: echo
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(ts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsJSON(string(b), `"credentials":{"aws":{"accessKeyId":"AK"`) {
+		t.Fatalf("credentials json wrong: %s", b)
+	}
+	// Empty credentials should be omitted.
+	ts2 := &Task{Name: "n"}
+	b2, _ := json.Marshal(ts2)
+	if containsJSON(string(b2), "credentials") {
+		t.Fatalf("empty credentials should be omitted: %s", b2)
+	}
+}
+
+func containsJSON(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
 }

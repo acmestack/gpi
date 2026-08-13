@@ -1,0 +1,17 @@
+{
+  "task": {
+    "name": "docker-task",
+    "numNodes": 1,
+    "resources": {},
+    "backend": "docker",
+    "docker": {
+      "image": "pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime",
+      "volumes": {
+        "./data": "/workspace/data"
+      },
+      "gpus": 1
+    },
+    "setup": "pip install -r requirements.txt\n",
+    "run": "python train.py"
+  }
+}
