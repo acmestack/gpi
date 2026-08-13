@@ -34,6 +34,7 @@
 - 修改完成后先报告改动内容和验证结果，推送前必须询问用户。
 - 每次处理完成后，把 `git diff` 的内容展示给用户，由用户判断是否可以 push。
 - **每次修改完成后，先展示 diff / 改动清单，等用户明确确认后再 `git commit`**——不得直接提交。
+- **所有提交必须 `-S` 签名**（GPG）：本地已配置 `user.signingkey=EE2178E827265FD0` 与 `commit.gpgsign=true`，提交命令统一用 `git commit -S`；tag 发布同样用 `git tag -S` 签名。
 - git commit message 一律使用英文。
 - commit message 根据当前变更的内容来写，内容可以简化，但必须体现变化的要点。
 
