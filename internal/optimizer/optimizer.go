@@ -27,7 +27,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/acmestack/gpi/internal/logging"
 )
+
+// logger is the package logger, tagged with the module name.
+var logger = logging.WithName("optimizer")
 
 // Optimizer ranks placement candidates for a task. Implementations are
 // registered by name and selected via CLI/server flags.

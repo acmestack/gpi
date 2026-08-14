@@ -32,6 +32,7 @@ func (e *existingBackend) Launch(ctx context.Context, name string, ts *task.Task
 	if target.User == "" {
 		target.User = "root"
 	}
+	logger.Info("existing launch", "cluster", name, "host", target.Host, "backend", task.BackendExisting)
 	cluster := &state.Cluster{
 		Name:      name,
 		Status:    state.ClusterUp,
@@ -86,6 +87,7 @@ func (e *existingBackend) Exec(ctx context.Context, name, cmd string, stream fun
 
 // Down just removes the state record; the external host is left untouched.
 func (e *existingBackend) Down(ctx context.Context, name string) error {
+	logger.Info("existing teardown", "cluster", name)
 	return e.store.DeleteCluster(name)
 }
 

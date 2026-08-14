@@ -2,10 +2,10 @@ package cli
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
+	"github.com/acmestack/gpi/internal/logging"
 	"github.com/acmestack/gpi/internal/optimizer"
 	"github.com/acmestack/gpi/internal/serve"
 	"github.com/acmestack/gpi/internal/task"
@@ -62,12 +62,13 @@ func newServeUpCommand() *cobra.Command {
 				return err
 			}
 			if !noConfirm {
-				fmt.Printf("Deploy service %q with %d replica(s), port %d, base instance %s in %s/%s? [y/N] ",
+				// Interactive confirm prompt: direct stdout, not a log.
+				logging.CLIPrintf("Deploy service %q with %d replica(s), port %d, base instance %s in %s/%s? [y/N] ",
 					name, ts.Service.Replicas, ts.Service.Port, plan.Launches[0].InstanceType, plan.Launches[0].Cloud, plan.Launches[0].Region)
 				var ans string
 				fmt.Scanln(&ans)
 				if ans != "y" && ans != "Y" {
-					fmt.Println("aborted")
+					logging.CLIPrintln("aborted")
 					return nil
 				}
 			}
@@ -76,9 +77,9 @@ func newServeUpCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Service %s is running.\n", svc.Name)
+			logging.CLIPrintf("Service %s is running.\n", svc.Name)
 			for _, ep := range svc.Endpoints {
-				fmt.Printf("  endpoint: http://%s\n", ep)
+				logging.CLIPrintf("  endpoint: http://%s\n", ep)
 			}
 			return nil
 		}),
@@ -99,10 +100,10 @@ func newServeStatusCommand() *cobra.Command {
 		RunE: withCtx(func(c *ctx, _ *cobra.Command, _ []string) error {
 			services := c.store.ListServices()
 			if len(services) == 0 {
-				fmt.Println("No services.")
+				logging.CLIPrintln("No services.")
 				return nil
 			}
-			fmt.Printf("%-20s %-10s %-6s %-10s %s\n", "NAME", "STATUS", "REPL", "PORT", "ENDPOINTS")
+			logging.CLIPrintf("%-20s %-10s %-6s %-10s %s\n", "NAME", "STATUS", "REPL", "PORT", "ENDPOINTS")
 			for _, svc := range services {
 				endpoints := ""
 				for i, ep := range svc.Endpoints {
@@ -111,7 +112,7 @@ func newServeStatusCommand() *cobra.Command {
 					}
 					endpoints += ep
 				}
-				fmt.Printf("%-20s %-10s %-6d %-10d %s\n", svc.Name, svc.Status, svc.Replicas, svc.Port, endpoints)
+				logging.CLIPrintf("%-20s %-10s %-6d %-10d %s\n", svc.Name, svc.Status, svc.Replicas, svc.Port, endpoints)
 			}
 			return nil
 		}),
@@ -130,13 +131,15 @@ func newServeDownCommand() *cobra.Command {
 			}
 			for _, clusterName := range svc.ReplicaClusters {
 				if err := c.prov.Down(cmd.Context(), clusterName); err != nil {
-					fmt.Fprintln(os.Stderr, "warn:", err)
+					logger.Warn("tear down replica failed",
+						"cluster", clusterName,
+						"error", err)
 				}
 			}
 			if err := c.store.DeleteService(args[0]); err != nil {
 				return err
 			}
-			fmt.Printf("Service %s torn down.\n", args[0])
+			logging.CLIPrintf("Service %s torn down.\n", args[0])
 			return nil
 		}),
 	}

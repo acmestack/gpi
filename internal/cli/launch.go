@@ -3,13 +3,13 @@ package cli
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/acmestack/gpi/internal/cloud/catalog"
 	"github.com/acmestack/gpi/internal/config"
+	"github.com/acmestack/gpi/internal/logging"
 	"github.com/acmestack/gpi/internal/optimizer"
 	"github.com/acmestack/gpi/internal/task"
 )
@@ -64,7 +64,7 @@ func newLaunchCommand() *cobra.Command {
 
 			var launch *optimizer.Launch
 			if ts.Backend != task.BackendCloud {
-				fmt.Printf("=== Backend: %s (no placement needed) ===\n", ts.Backend)
+				logging.CLIPrintf("=== Backend: %s (no placement needed) ===\n", ts.Backend)
 				launch = &optimizer.Launch{Cloud: ts.Backend, NumNodes: ts.NumNodes}
 			} else {
 				plan, err := opt.Optimize(cmd.Context(), &optimizer.Request{
@@ -81,7 +81,7 @@ func newLaunchCommand() *cobra.Command {
 					return err
 				}
 
-				fmt.Printf("=== Optimizer summary (%s) ===\n", opt.Name())
+				logging.CLIPrintf("=== Optimizer summary (%s) ===\n", opt.Name())
 				printPlan(plan)
 
 				if dryRun {
@@ -92,7 +92,7 @@ func newLaunchCommand() *cobra.Command {
 				// minute). Failures fall back to the plan price.
 				picked := plan.Launches[0]
 				if live, err := refreshLaunchPrice(cmd.Context(), picked); err == nil && live != nil {
-					fmt.Printf("Live price check %s/%s %s: on-demand $%.4f, spot $%.4f\n",
+					logging.CLIPrintf("Live price check %s/%s %s: on-demand $%.4f, spot $%.4f\n",
 						picked.Cloud, picked.Region, picked.InstanceType, live.OnDemand, live.Spot)
 					if live.Spot > 0 {
 						picked.SpotCost = live.Spot
@@ -103,14 +103,15 @@ func newLaunchCommand() *cobra.Command {
 					plan.TotalCostPerHour = picked.TotalCostPerHour()
 					printPlan(plan)
 				} else if err != nil {
-					fmt.Printf("(live price refresh unavailable: %v)\n", err)
+					logging.CLIPrintf("(live price refresh unavailable: %v)\n", err)
 				}
 				if !noConfirm {
-					fmt.Printf("Launch cluster %q in %s/%s (%s)? [y/N] ", clusterName, plan.Launches[0].Cloud, plan.Launches[0].Region, plan.Launches[0].InstanceType)
+					// Interactive confirm prompt: direct stdout, not a log.
+					logging.CLIPrintf("Launch cluster %q in %s/%s (%s)? [y/N] ", clusterName, plan.Launches[0].Cloud, plan.Launches[0].Region, plan.Launches[0].InstanceType)
 					var ans string
 					fmt.Scanln(&ans)
 					if strings.ToLower(strings.TrimSpace(ans)) != "y" {
-						fmt.Println("aborted")
+						logging.CLIPrintln("aborted")
 						return nil
 					}
 				}
@@ -121,11 +122,12 @@ func newLaunchCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Cluster %s provisioned: %d node(s) via %s\n",
+			logging.CLIPrintf("Cluster %s provisioned: %d node(s) via %s\n",
 				cluster.Name, cluster.NumNodes, cluster.Backend)
 
 			code, err := c.prov.RunTask(cmd.Context(), clusterName, ts, func(line string) {
-				fmt.Fprintf(os.Stdout, "(task) %s\n", line)
+				// Streamed task output: interactive UX, not a log.
+				logging.CLIPrintf("(task) %s\n", line)
 			})
 			if err != nil {
 				return err
@@ -221,22 +223,22 @@ func selectOptimizer(name string) (optimizer.Optimizer, error) {
 func printPlan(plan *optimizer.Plan) {
 	showTime := plan.TotalEstimatedTime > 0 || (len(plan.Launches) > 0 && plan.Launches[0].EstimatedTime > 0)
 	if showTime {
-		fmt.Printf("%-3s %-10s %-10s %-24s %-8s %-8s %-10s %-10s\n",
+		logging.CLIPrintf("%-3s %-10s %-10s %-24s %-8s %-8s %-10s %-10s\n",
 			"#", "CLOUD", "REGION", "INSTANCE", "NODES", "CPUS", "$/hr", "EST TIME")
 		for _, l := range plan.Launches {
-			fmt.Printf("%-3d %-10s %-10s %-24s %-8d %-8d %-10.3f %-10s\n",
+			logging.CLIPrintf("%-3d %-10s %-10s %-24s %-8d %-8d %-10.3f %-10s\n",
 				l.Order, l.Cloud, l.Region, l.InstanceType, l.NumNodes, l.VCPUs, l.CostPerHour(), formatHours(l.EstimatedTime))
 		}
-		fmt.Printf("\nTotal estimated time: %s\n", formatHours(plan.TotalEstimatedTime))
+		logging.CLIPrintf("\nTotal estimated time: %s\n", formatHours(plan.TotalEstimatedTime))
 		return
 	}
-	fmt.Printf("%-3s %-10s %-10s %-24s %-8s %-8s %-10s\n",
+	logging.CLIPrintf("%-3s %-10s %-10s %-24s %-8s %-8s %-10s\n",
 		"#", "CLOUD", "REGION", "INSTANCE", "NODES", "CPUS", "$/hr")
 	for _, l := range plan.Launches {
-		fmt.Printf("%-3d %-10s %-10s %-24s %-8d %-8d %-10.3f\n",
+		logging.CLIPrintf("%-3d %-10s %-10s %-24s %-8d %-8d %-10.3f\n",
 			l.Order, l.Cloud, l.Region, l.InstanceType, l.NumNodes, l.VCPUs, l.CostPerHour())
 	}
-	fmt.Printf("\nTotal estimated cost: $%.3f/hour for %d node(s)\n",
+	logging.CLIPrintf("\nTotal estimated cost: $%.3f/hour for %d node(s)\n",
 		plan.TotalCostPerHour, plan.Launches[0].NumNodes)
 }
 

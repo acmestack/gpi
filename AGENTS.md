@@ -2,6 +2,18 @@
 
 本文件记录本项目约定，供开发/协作时遵循。
 
+## Go 代码约定
+
+- **import 分组（三组）**：每个 go 文件的 import 固定分 3 组，组间空行分隔，组内按字母序：
+  1. 系统/标准库包（`context`、`fmt`、`os` 等）；
+  2. 第三方包（`github.com/spf13/cobra`、`go.uber.org/zap` 等）；
+  3. 项目内部包（`github.com/acmestack/gpi/...`）。
+  统一用 `goimports -local github.com/acmestack/gpi -w <file>` 自动分组（工具已装在 `~/go/bin/goimports`）。不要手动把第三方和内部包混在一组。
+- **日志约定（`internal/logging`）**：
+  - 后台/守护诊断日志用 `logging.Get()` 返回的 `*logging.Logger`，级别方法直接传 key/value 对，例如 `Log.Info("launching cluster", "cluster", name, "nodes", n)`；**不要**写 `zap.String("cluster", name)` 这类字段构造。
+  - CLI 面向用户的命令输出（表格、确认提示、流式进度、结果摘要）用 `logging.CLIPrintf` / `logging.CLIPrintln`，写 stdout，**不经过日志文件**；不要用 `fmt.Print*` 直出，也不要改成 `logging.Get()`。
+  - `internal/logging` 包按职责拆分：`logging.go`（Logger 封装 + Get/Setup）、`config.go`（Config + 默认值）、`encoder.go`（zap core 构建）、`rotate.go`（lumberjack 轮转）、`level.go`（级别解析）、`cli.go`（CLIPrintf/CLIPrintln）。新增日志相关代码按此结构放对应文件。
+
 ## 文档版本号与日期
 
 - 所有生成的文档/产物（csv / html / drawio / md 等）都必须带版本号，且版本号要带上日期。

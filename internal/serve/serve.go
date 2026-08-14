@@ -6,10 +6,14 @@ import (
 	"time"
 
 	"github.com/acmestack/gpi/internal/backend"
+	"github.com/acmestack/gpi/internal/logging"
 	"github.com/acmestack/gpi/internal/optimizer"
 	"github.com/acmestack/gpi/internal/state"
 	"github.com/acmestack/gpi/internal/task"
 )
+
+// logger is the package logger, tagged with the module name.
+var logger = logging.WithName("serve")
 
 // Manager deploys and tracks replicated services (SkyServe analog).
 type Manager struct {
@@ -46,6 +50,7 @@ func (m *Manager) Up(ctx context.Context, name string, ts *task.Task, plan *opti
 	if err := m.Store.AddService(svc); err != nil {
 		return nil, err
 	}
+	logger.Info("deploying service", "service", name, "replicas", replicas, "port", port)
 
 	for i := 0; i < replicas; i++ {
 		replicaName := fmt.Sprintf("serve-%s-%d", name, i)
@@ -76,6 +81,7 @@ func (m *Manager) Up(ctx context.Context, name string, ts *task.Task, plan *opti
 		s.UpdatedAt = time.Now().Unix()
 		return nil
 	})
+	logger.Info("service running", "service", name)
 	return m.Store.GetService(name)
 }
 

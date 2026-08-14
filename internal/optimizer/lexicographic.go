@@ -102,8 +102,25 @@ func (s lexicographicOptimizer) Optimize(ctx context.Context, req *Request) (*Pl
 	if len(allCands) == 0 {
 		return nil, fmt.Errorf("no instance type found matching resources %s in %s", req.Resources.String(), cloudNames(opts))
 	}
+	logger.Debug("optimizer candidates collected",
+		"strategy", s.Name(),
+		"cloud", cloudNames(opts),
+		"nodes", opts.NumNodes,
+		"use_spot", useSpot,
+		"candidates", len(allCands),
+	)
 
 	plan := s.rankPlan(allCands, groupOf, req, opts, useSpot)
+	if len(plan.Launches) > 0 {
+		top := plan.Launches[0]
+		logger.Debug("optimizer chose placement",
+			"strategy", s.Name(),
+			"cloud", top.Cloud,
+			"region", top.Region,
+			"instance", top.InstanceType,
+			"cost_per_hour", top.CostPerHour(),
+		)
+	}
 	return plan, nil
 }
 

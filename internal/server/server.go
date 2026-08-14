@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -13,11 +12,15 @@ import (
 
 	"github.com/acmestack/gpi/internal/backend"
 	"github.com/acmestack/gpi/internal/jobs"
+	"github.com/acmestack/gpi/internal/logging"
 	"github.com/acmestack/gpi/internal/optimizer"
 	"github.com/acmestack/gpi/internal/serve"
 	"github.com/acmestack/gpi/internal/state"
 	"github.com/acmestack/gpi/internal/task"
 )
+
+// logger is the package logger, tagged with the module name.
+var logger = logging.WithName("server")
 
 // Server exposes the gpi control plane as a REST API plus a background
 // job scheduler.
@@ -26,7 +29,6 @@ type Server struct {
 	Prov     *backend.Manager
 	Serve    *serve.Manager
 	Jobs     *jobs.Manager
-	Log      *log.Logger
 	Response ResponseEncoder
 	// RequestIDHeader is the header key carrying the request ID (default
 	// "x-request-id", configurable via GPI_REQUEST_ID_HEADER).
@@ -68,7 +70,6 @@ func New(store *state.Store, prov *backend.Manager) *Server {
 		Prov:               prov,
 		Serve:              serve.New(store, prov),
 		Jobs:               jobs.New(store, prov),
-		Log:                log.New(os.Stderr, "[gpi-server] ", log.LstdFlags),
 		Response:           responseFormatFromEnv(),
 		RequestIDHeader:    reqHeader,
 		RequestIDBodyField: DefaultRequestIDBodyField,
@@ -185,7 +186,7 @@ func (s *Server) middlewares() []Middleware {
 	}
 	mws = append(mws, newAuthMiddleware(s.Store, s.AuthRequired))
 	mws = append(mws, requestIDMiddleware{headerKey: s.RequestIDHeader})
-	mws = append(mws, &loggingMiddleware{logf: s.Log.Printf})
+	mws = append(mws, &loggingMiddleware{logger: logger})
 	return mws
 }
 
@@ -197,7 +198,7 @@ func (s *Server) Run(ctx context.Context, port int) error {
 		Addr:    ":" + strconv.Itoa(port),
 		Handler: s.Handler(),
 	}
-	s.Log.Printf("listening on %s", srv.Addr)
+	logger.Info("server listening", "addr", srv.Addr)
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- srv.ListenAndServe()
@@ -224,10 +225,10 @@ func (s *Server) scheduler(ctx context.Context) {
 			for _, job := range s.Jobs.Due() {
 				jobCopy := job
 				go func() {
-					s.Log.Printf("running scheduled job %s", jobCopy.Name)
+					logger.Info("running scheduled job", "job", jobCopy.Name)
 					err := s.Jobs.RunNow(ctx, jobCopy.Name, nil)
 					if err != nil {
-						s.Log.Printf("job %s failed: %v", jobCopy.Name, err)
+						logger.Error("scheduled job failed", "job", jobCopy.Name, "error", err)
 					}
 					s.Jobs.Reschedule(jobCopy)
 				}()
@@ -510,7 +511,7 @@ func (s *Server) handleRunJob(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		err := s.Jobs.RunNow(context.Background(), job.Name, nil)
 		if err != nil {
-			s.Log.Printf("job %s failed: %v", job.Name, err)
+			logger.Error("job failed", "job", job.Name, "error", err)
 		}
 	}()
 	s.writeJSON(w, http.StatusAccepted, map[string]string{"status": "queued"})

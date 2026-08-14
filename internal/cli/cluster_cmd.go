@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/acmestack/gpi/internal/logging"
 )
 
 func newClusterCommand() *cobra.Command {
@@ -33,7 +35,7 @@ func newClusterYAMLCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Println(y.YAML)
+			logging.CLIPrintln(y.YAML)
 			return nil
 		}),
 	}
@@ -49,12 +51,12 @@ func newClusterHistoryCommand() *cobra.Command {
 				if h.ClusterName != args[0] {
 					continue
 				}
-				fmt.Printf("Cluster    : %s\n", h.ClusterName)
-				fmt.Printf("Nodes      : %d\n", h.NumNodes)
-				fmt.Printf("Cloud      : %s/%s (%s)\n", h.Cloud, h.Region, h.Zone)
-				fmt.Printf("Instance   : %s\n", h.InstanceType)
-				fmt.Printf("Backend    : %s\n", h.Backend)
-				fmt.Printf("LaunchedAt : %s\n", formatTime(h.LaunchedAt))
+				logging.CLIPrintf("Cluster    : %s\n", h.ClusterName)
+				logging.CLIPrintf("Nodes      : %d\n", h.NumNodes)
+				logging.CLIPrintf("Cloud      : %s/%s (%s)\n", h.Cloud, h.Region, h.Zone)
+				logging.CLIPrintf("Instance   : %s\n", h.InstanceType)
+				logging.CLIPrintf("Backend    : %s\n", h.Backend)
+				logging.CLIPrintf("LaunchedAt : %s\n", formatTime(h.LaunchedAt))
 				return nil
 			}
 			return fmt.Errorf("no history for cluster %s", args[0])
@@ -70,10 +72,10 @@ func newClusterEventsCommand() *cobra.Command {
 		RunE: withCtx(func(c *ctx, _ *cobra.Command, args []string) error {
 			events := c.store.ListClusterEventsFor(args[0])
 			if len(events) == 0 {
-				fmt.Printf("No events for cluster %s.\n", args[0])
+				logging.CLIPrintf("No events for cluster %s.\n", args[0])
 				return nil
 			}
-			fmt.Printf("%-22s %-20s %-20s %-14s %s\n", "TIME", "FROM", "TO", "TYPE", "REQUEST ID")
+			logging.CLIPrintf("%-22s %-20s %-20s %-14s %s\n", "TIME", "FROM", "TO", "TYPE", "REQUEST ID")
 			for _, e := range events {
 				from := e.StartingStatus
 				if from == "" {
@@ -83,7 +85,7 @@ func newClusterEventsCommand() *cobra.Command {
 				if rid == "" {
 					rid = "-"
 				}
-				fmt.Printf("%-22s %-20s %-20s %-14s %s\n",
+				logging.CLIPrintf("%-22s %-20s %-20s %-14s %s\n",
 					timeFmt(e.TransitionedAt), from, e.EndingStatus, e.Type, rid)
 			}
 			return nil
@@ -102,20 +104,20 @@ func newClusterStatusCommand() *cobra.Command {
 				return err
 			}
 			head := cluster.Head()
-			fmt.Printf("Cluster    : %s\n", cluster.Name)
-			fmt.Printf("Status     : %s\n", cluster.Status)
-			fmt.Printf("Cloud      : %s/%s\n", cluster.Cloud, cluster.Region)
-			fmt.Printf("Topology   : %d head + %d worker (total %d)\n", headCount(cluster), workerCount(cluster), cluster.NumNodes)
+			logging.CLIPrintf("Cluster    : %s\n", cluster.Name)
+			logging.CLIPrintf("Status     : %s\n", cluster.Status)
+			logging.CLIPrintf("Cloud      : %s/%s\n", cluster.Cloud, cluster.Region)
+			logging.CLIPrintf("Topology   : %d head + %d worker (total %d)\n", headCount(cluster), workerCount(cluster), cluster.NumNodes)
 			if cluster.NumNodes > 1 {
 				if head != nil {
-					fmt.Printf("Ray head   : %s:%s (dashboard http://%s:8265)\n", head.PrivateIP, "6379", head.PublicIP)
+					logging.CLIPrintf("Ray head   : %s:%s (dashboard http://%s:8265)\n", head.PrivateIP, "6379", head.PublicIP)
 				}
 			}
 			if len(cluster.Labels) > 0 {
-				fmt.Printf("Ray labels : %s\n", sortedKV(cluster.Labels))
+				logging.CLIPrintf("Ray labels : %s\n", sortedKV(cluster.Labels))
 			}
 			if len(cluster.Tags) > 0 {
-				fmt.Printf("Tags       : %s\n", sortedKV(cluster.Tags))
+				logging.CLIPrintf("Tags       : %s\n", sortedKV(cluster.Tags))
 			}
 			return nil
 		}),
@@ -146,25 +148,25 @@ func newClusterNodesCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("%-16s %-8s %-18s %-18s %-12s %s\n",
+			logging.CLIPrintf("%-16s %-8s %-18s %-18s %-12s %s\n",
 				"NODE ID", "ROLE", "PUBLIC IP", "PRIVATE IP", "STATUS", "INSTANCE TYPE")
 			for _, node := range cluster.Instances {
 				role := node.Role
 				if role == "" {
 					role = "-"
 				}
-				fmt.Printf("%-16s %-8s %-18s %-18s %-12s %s\n",
+				logging.CLIPrintf("%-16s %-8s %-18s %-18s %-12s %s\n",
 					node.ID, role, node.PublicIP, node.PrivateIP, node.Status, node.InstanceType)
 			}
 			if showHealth {
-				fmt.Println("\nLive health (gpilet):")
+				logging.CLIPrintln("\nLive health (gpilet):")
 				for i := range cluster.Instances {
 					node := &cluster.Instances[i]
 					if node.PublicIP == "" {
 						continue
 					}
 					line := c.prov.GpiletHealth(cmd.Context(), cluster, node)
-					fmt.Printf("  %-16s %s\n", node.ID, line)
+					logging.CLIPrintf("  %-16s %s\n", node.ID, line)
 				}
 			}
 			return nil

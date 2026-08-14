@@ -15,10 +15,14 @@ import (
 
 	"github.com/acmestack/gpi/internal/cloud"
 	"github.com/acmestack/gpi/internal/gpilet"
+	"github.com/acmestack/gpi/internal/logging"
 	"github.com/acmestack/gpi/internal/optimizer"
 	"github.com/acmestack/gpi/internal/state"
 	"github.com/acmestack/gpi/internal/task"
 )
+
+// logger is the package logger, tagged with the module name.
+var logger = logging.WithName("provisioner")
 
 // Provisioner orchestrates the full cloud lifecycle: keypair + image
 // resolution, instance launch, Ray bootstrap, gpilet deployment, task
@@ -37,6 +41,12 @@ func New(store *state.Store, dir string) *Provisioner {
 // runs instances, waits until running, bootstraps Ray (multi-node), deploys
 // gpilet, and records the cluster in the store.
 func (p *Provisioner) Launch(ctx context.Context, name string, ts *task.Task, l *optimizer.Launch) (*state.Cluster, error) {
+	logger.Info("launching cluster",
+		"cluster", name,
+		"cloud", l.Cloud,
+		"region", l.Region,
+		"instance", l.InstanceType,
+		"nodes", l.NumNodes)
 	prov, err := cloud.New(l.Cloud, toCloudCreds(ts.Credentials.ForCloud(l.Cloud)))
 	if err != nil {
 		return nil, err
@@ -96,6 +106,9 @@ func (p *Provisioner) Launch(ctx context.Context, name string, ts *task.Task, l 
 	if err != nil {
 		return nil, fmt.Errorf("run instances: %w", err)
 	}
+	logger.Info("instances running",
+		"cluster", name,
+		"count", len(instances))
 
 	nodes := make([]state.Node, 0, len(instances))
 	for i, inst := range instances {
@@ -167,6 +180,11 @@ func (p *Provisioner) Launch(ctx context.Context, name string, ts *task.Task, l 
 		p.recordClusterEvent(name, state.ClusterProvisioning, state.ClusterError, state.EventStatusChange, "gpilet install: "+err.Error())
 		return nil, err
 	}
+	logger.Info("cluster ready",
+		"cluster", name,
+		"cloud", l.Cloud,
+		"region", l.Region,
+		"nodes", l.NumNodes)
 	return cluster, nil
 }
 
@@ -457,6 +475,7 @@ func (p *Provisioner) waitReady(ctx context.Context, prov cloud.Provider, cluste
 // nodes, optionally uploads the workdir to head, runs setup on all nodes
 // (parallel for multi-node) and the run command on the head node.
 func (p *Provisioner) RunTask(ctx context.Context, name string, ts *task.Task, stream func(line string)) (int, error) {
+	logger.Info("running task", "cluster", name, "task", ts.Name)
 	cluster, err := p.Store.GetCluster(name)
 	if err != nil {
 		return -1, err
@@ -556,6 +575,7 @@ func (p *Provisioner) Exec(ctx context.Context, name, cmd string, stream func(li
 
 // Down terminates all instances of a cluster and removes its state record.
 func (p *Provisioner) Down(ctx context.Context, name string) error {
+	logger.Info("terminating cluster", "cluster", name)
 	cluster, err := p.Store.GetCluster(name)
 	if err != nil {
 		return err
@@ -579,6 +599,7 @@ func (p *Provisioner) Down(ctx context.Context, name string) error {
 
 // Stop powers off a cluster's instances (billing stops, data retained).
 func (p *Provisioner) Stop(ctx context.Context, name string) error {
+	logger.Info("stopping cluster", "cluster", name)
 	cluster, err := p.Store.GetCluster(name)
 	if err != nil {
 		return err
@@ -603,6 +624,7 @@ func (p *Provisioner) Stop(ctx context.Context, name string) error {
 
 // Start powers a stopped cluster back on and waits for it to be ready.
 func (p *Provisioner) Start(ctx context.Context, name string) error {
+	logger.Info("starting cluster", "cluster", name)
 	cluster, err := p.Store.GetCluster(name)
 	if err != nil {
 		return err

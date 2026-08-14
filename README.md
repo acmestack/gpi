@@ -186,6 +186,30 @@ GPI_STATE_BACKEND=redis GPI_STATE_REDIS_ADDR=localhost:6379
 # gpi cluster yaml|history|events CLUSTER
 ```
 
+### 日志（Logging）
+
+默认结构化日志输出到 **stdout**（zap，text 格式、info 级别）。可输出到文件，并按大小轮转、gzip 压缩、保留备份（基于 lumberjack）：
+
+```bash
+# CLI 标志（优先级最高）
+gpi --log-level debug --log-file /var/log/gpi/gpi.log --log-format json server start
+
+# 环境变量
+GPI_LOG_LEVEL=info  GPI_LOG_FILE=/var/log/gpi/gpi.log  GPI_LOG_FORMAT=text
+
+# 或 ~/.gpi/config.yaml / 项目 .gpi.yaml 的 logging 段
+logging:
+  level: info          # debug | info | warn | error
+  format: text         # text | json
+  file: /var/log/gpi/gpi.log   # 空 = stdout
+  max_size: 100        # 超过该 MB 触发轮转（默认 100）
+  max_backups: 5       # 保留的备份文件数（默认 5）
+  max_age: 30          # 备份保留天数（默认 30）
+  compress: true       # 轮转文件 gzip 压缩（默认 true）
+```
+
+优先级：CLI 标志 > 配置文件 > 环境变量 > 默认值。
+
 ### 服务化部署与定时任务
 
 ```bash

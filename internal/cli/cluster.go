@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/acmestack/gpi/internal/logging"
 	"github.com/acmestack/gpi/internal/state"
 )
 
@@ -16,17 +17,17 @@ func newStatusCommand() *cobra.Command {
 		RunE: withCtx(func(c *ctx, _ *cobra.Command, _ []string) error {
 			clusters := c.store.ListClusters()
 			if len(clusters) == 0 {
-				fmt.Println("No clusters.")
+				logging.CLIPrintln("No clusters.")
 				return nil
 			}
-			fmt.Printf("%-20s %-12s %-10s %-12s %-6s %-10s %-24s %-16s\n",
+			logging.CLIPrintf("%-20s %-12s %-10s %-12s %-6s %-10s %-24s %-16s\n",
 				"NAME", "STATUS", "CLOUD", "REGION", "NODES", "ROLE", "INSTANCE", "PUBLIC IP")
 			for _, cl := range clusters {
 				inst := ""
 				if cl.Launch != nil {
 					inst = cl.Launch.InstanceType
 				}
-				fmt.Printf("%-20s %-12s %-10s %-12s %-6d %-10s %-24s %-16s\n",
+				logging.CLIPrintf("%-20s %-12s %-10s %-12s %-6d %-10s %-24s %-16s\n",
 					cl.Name, cl.Status, cl.Cloud, cl.Region, cl.NumNodes, clusterRoles(cl), inst, cl.GetNodeIP())
 			}
 			return nil
@@ -70,7 +71,7 @@ func newDownCommand() *cobra.Command {
 			if err := c.prov.Down(cmd.Context(), args[0]); err != nil {
 				return err
 			}
-			fmt.Printf("Cluster %s terminated.\n", args[0])
+			logging.CLIPrintf("Cluster %s terminated.\n", args[0])
 			return nil
 		}),
 	}
@@ -85,7 +86,7 @@ func newStopCommand() *cobra.Command {
 			if err := c.prov.Stop(cmd.Context(), args[0]); err != nil {
 				return err
 			}
-			fmt.Printf("Cluster %s stopped.\n", args[0])
+			logging.CLIPrintf("Cluster %s stopped.\n", args[0])
 			return nil
 		}),
 	}
@@ -100,7 +101,7 @@ func newStartCommand() *cobra.Command {
 			if err := c.prov.Start(cmd.Context(), args[0]); err != nil {
 				return err
 			}
-			fmt.Printf("Cluster %s started.\n", args[0])
+			logging.CLIPrintf("Cluster %s started.\n", args[0])
 			return nil
 		}),
 	}
@@ -115,7 +116,8 @@ func newExecCommand() *cobra.Command {
 			cluster, command := args[0], args[1:]
 			script := joinCommand(command)
 			code, err := c.prov.Exec(cmd.Context(), cluster, script, func(line string) {
-				fmt.Println("(exec)", line)
+				// Streamed exec output: interactive UX, not a log.
+				logging.CLIPrintln("(exec)", line)
 			})
 			if err != nil {
 				return err

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/acmestack/gpi/internal/logging"
 )
 
 // newServerTokenCommand adds token management subcommands. These talk to a
@@ -121,16 +123,16 @@ func newTokenCreateCommand() *cobra.Command {
 			}, &resp); err != nil {
 				return err
 			}
-			fmt.Printf("Token created (shown once):\n")
-			fmt.Printf("  token_id   : %s\n", asString(resp["tokenId"]))
-			fmt.Printf("  token_name : %s\n", asString(resp["tokenName"]))
-			fmt.Printf("  token      : %s\n", asString(resp["token"]))
+			logging.CLIPrintf("Token created (shown once):\n")
+			logging.CLIPrintf("  token_id   : %s\n", asString(resp["tokenId"]))
+			logging.CLIPrintf("  token_name : %s\n", asString(resp["tokenName"]))
+			logging.CLIPrintf("  token      : %s\n", asString(resp["token"]))
 			if exp := toInt64(resp["expiresAt"]); exp > 0 {
-				fmt.Printf("  expires_at : %s\n", time.Unix(exp, 0).Format(time.RFC3339))
+				logging.CLIPrintf("  expires_at : %s\n", time.Unix(exp, 0).Format(time.RFC3339))
 			} else {
-				fmt.Printf("  expires_at : never\n")
+				logging.CLIPrintf("  expires_at : never\n")
 			}
-			fmt.Printf("\nUse it as: Authorization: Bearer %s\n", asString(resp["token"]))
+			logging.CLIPrintf("\nUse it as: Authorization: Bearer %s\n", asString(resp["token"]))
 			return nil
 		},
 	}
@@ -151,10 +153,10 @@ func newTokenListCommand() *cobra.Command {
 				return err
 			}
 			if len(data) == 0 {
-				fmt.Println("No tokens.")
+				logging.CLIPrintln("No tokens.")
 				return nil
 			}
-			fmt.Printf("%-12s %-16s %-10s %-24s %-10s\n", "ID", "NAME", "CREATOR", "CREATED", "ACTIVE")
+			logging.CLIPrintf("%-12s %-16s %-10s %-24s %-10s\n", "ID", "NAME", "CREATOR", "CREATED", "ACTIVE")
 			for _, item := range data {
 				m, ok := item.(map[string]any)
 				if !ok {
@@ -165,7 +167,7 @@ func newTokenListCommand() *cobra.Command {
 				creator := asString(m["creator"])
 				created := toInt64(m["createdAt"])
 				active := asBool(m["active"])
-				fmt.Printf("%-12s %-16s %-10s %-24s %-10t\n",
+				logging.CLIPrintf("%-12s %-16s %-10s %-24s %-10t\n",
 					id, name, creator, formatTime(created), active)
 			}
 			return nil
@@ -204,7 +206,7 @@ func newTokenRevokeCommand() *cobra.Command {
 			if err := apiRequest(http.MethodDelete, "/api/v1/tokens/"+args[0], nil, nil); err != nil {
 				return err
 			}
-			fmt.Printf("Token %s revoked.\n", args[0])
+			logging.CLIPrintf("Token %s revoked.\n", args[0])
 			return nil
 		},
 	}
@@ -223,8 +225,8 @@ func newTokenRotateCommand() *cobra.Command {
 			}, &resp); err != nil {
 				return err
 			}
-			fmt.Printf("Token %s rotated. New secret (shown once):\n", asString(resp["tokenId"]))
-			fmt.Printf("  token : %s\n", asString(resp["token"]))
+			logging.CLIPrintf("Token %s rotated. New secret (shown once):\n", asString(resp["tokenId"]))
+			logging.CLIPrintf("  token : %s\n", asString(resp["token"]))
 			return nil
 		},
 	}

@@ -25,6 +25,7 @@ func (d *dockerBackend) Name() string { return task.BackendDocker }
 
 func (d *dockerBackend) Launch(ctx context.Context, name string, ts *task.Task, _ *optimizer.Launch) (*state.Cluster, error) {
 	image := ts.Docker.Image
+	logger.Info("docker launch", "cluster", name, "image", image, "backend", task.BackendDocker)
 	args := []string{"run", "-d", "--name", name}
 	for k, v := range ts.Docker.Volumes {
 		args = append(args, "-v", k+":"+v)
@@ -91,12 +92,14 @@ func (d *dockerBackend) Exec(ctx context.Context, name, cmd string, stream func(
 
 // Down removes the container and its state record.
 func (d *dockerBackend) Down(ctx context.Context, name string) error {
+	logger.Info("docker teardown", "cluster", name)
 	exec.Command("docker", "rm", "-f", name).Run()
 	return d.store.DeleteCluster(name)
 }
 
 // Stop stops the container (data retained).
 func (d *dockerBackend) Stop(_ context.Context, name string) error {
+	logger.Info("docker stop", "cluster", name)
 	out, err := exec.Command("docker", "stop", name).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("docker stop: %s", strings.TrimSpace(string(out)))
@@ -109,6 +112,7 @@ func (d *dockerBackend) Stop(_ context.Context, name string) error {
 
 // Start resumes a stopped container.
 func (d *dockerBackend) Start(_ context.Context, name string) error {
+	logger.Info("docker start", "cluster", name)
 	out, err := exec.Command("docker", "start", name).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("docker start: %s", strings.TrimSpace(string(out)))

@@ -11,7 +11,11 @@ import (
 	"time"
 
 	"github.com/acmestack/gpi/internal/cloud/catalog"
+	"github.com/acmestack/gpi/internal/logging"
 )
+
+// logger is the package logger, tagged with the module name.
+var logger = logging.WithName("metacache")
 
 // Cache is a TTL-protected in-memory metadata cache for instance specs,
 // regions and prices. It is safe for concurrent use. Fetch errors keep
@@ -84,12 +88,14 @@ func (c *Cache) Instances(ctx context.Context, cloud, region string) ([]*catalog
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if err != nil {
+		logger.Debug("fetch specs failed", "cloud", cloud, "region", region, "error", err)
 		if ok {
 			return entry.instances, err
 		}
 		return nil, err
 	}
 	c.specs[k] = specEntry{instances: fresh, fetched: now}
+	logger.Debug("fetched specs", "cloud", cloud, "region", region, "count", len(fresh))
 	return fresh, nil
 }
 
@@ -157,6 +163,7 @@ func (c *Cache) Prices(ctx context.Context, cloud, region string, instanceTypes 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if err != nil {
+		logger.Debug("fetch prices failed", "cloud", cloud, "region", region, "error", err)
 		if ok {
 			entry.failedAt = now
 			c.prices[k] = entry
@@ -172,6 +179,7 @@ func (c *Cache) Prices(ctx context.Context, cloud, region string, instanceTypes 
 		merged[it] = p
 	}
 	c.prices[k] = priceEntry{prices: merged, fetched: now}
+	logger.Debug("fetched prices", "cloud", cloud, "region", region, "types", len(fresh))
 	return merged, nil
 }
 

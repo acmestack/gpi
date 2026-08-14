@@ -43,8 +43,86 @@ type Config struct {
 	// DefaultSpot is the spot default applied unless the task/flag says otherwise.
 	DefaultSpot *bool `yaml:"use_spot"`
 
+	// Logging carries the logging configuration (level, file, format).
+	Logging LoggingConfig `yaml:"logging"`
+
 	// node is the merged config tree, kept for per-cloud Section decoding.
 	node *yaml.Node
+}
+
+// LoggingConfig is the `logging:` section of the config file. Empty fields
+// mean "not configured"; callers fall back to env vars/CLI flags/defaults.
+type LoggingConfig struct {
+	// Level is the minimum severity: debug|info|warn|error.
+	Level string `yaml:"level"`
+	// File is the log output path; empty keeps stdout.
+	File string `yaml:"file"`
+	// Format is "text" or "json".
+	Format string `yaml:"format"`
+	// MaxSize is the log file size in MB that triggers rotation.
+	MaxSize int `yaml:"max_size"`
+	// MaxBackups is the number of rotated files to keep on disk.
+	MaxBackups int `yaml:"max_backups"`
+	// MaxAge is the number of days to keep rotated files.
+	MaxAge int `yaml:"max_age"`
+	// Compress enables gzip compression of rotated files; nil = default true.
+	Compress *bool `yaml:"compress"`
+}
+
+// LogLevel returns the configured log level, or "" when unset.
+func (c *Config) LogLevel() string {
+	if c == nil {
+		return ""
+	}
+	return c.Logging.Level
+}
+
+// LogFile returns the configured log file path, or "" when unset (stdout).
+func (c *Config) LogFile() string {
+	if c == nil {
+		return ""
+	}
+	return c.Logging.File
+}
+
+// LogFormat returns the configured log format, or "" when unset.
+func (c *Config) LogFormat() string {
+	if c == nil {
+		return ""
+	}
+	return c.Logging.Format
+}
+
+// LogMaxSize returns the configured rotation size in MB, or 0 when unset.
+func (c *Config) LogMaxSize() int {
+	if c == nil {
+		return 0
+	}
+	return c.Logging.MaxSize
+}
+
+// LogMaxBackups returns the configured rotated-file retention, or 0 unset.
+func (c *Config) LogMaxBackups() int {
+	if c == nil {
+		return 0
+	}
+	return c.Logging.MaxBackups
+}
+
+// LogMaxAge returns the configured rotated-file max age in days, or 0 unset.
+func (c *Config) LogMaxAge() int {
+	if c == nil {
+		return 0
+	}
+	return c.Logging.MaxAge
+}
+
+// LogCompress returns the configured compression flag, or nil when unset.
+func (c *Config) LogCompress() *bool {
+	if c == nil {
+		return nil
+	}
+	return c.Logging.Compress
 }
 
 var (
