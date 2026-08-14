@@ -41,7 +41,7 @@ export GPI_HOME=/tmp/gpi-dev
 - 保持"零不必要依赖"：云侧、SSH、HTTP 尽量用 Go 标准库。
 - 所有导出类型/函数必须有文档注释（`go vet` 会检查）。
 - 提交前运行 `gofmt -l .` 确保格式统一。
-- 遵循现有代码约定（错误处理、命名、包结构），参见 [docs/gpi-architecture.md](docs/gpi-architecture.md)。
+- 遵循现有代码约定（错误处理、命名、包结构），参见 [docs/gpi-architecture.md](gpi-architecture.md)。
 
 ## 提交规范
 
@@ -74,14 +74,14 @@ docs: add clickable links for referenced docs in README
 
 - `main` 为主分支，所有 PR 合并到 `main`。
 - 功能开发：从 `main` 切出分支（`feat/xxx`、`fix/xxx`）。
-- 版本发布：打 `v*` tag 触发 [Release workflow](.github/workflows/release.yml) 自动构建发布。
+- 版本发布：打 `v*` tag 触发 [Release workflow](../../.github/workflows/release.yml) 自动构建发布。
 
 ## Pull Request 流程
 
 1. Fork 本仓库并创建你的分支。
 2. 提交变更（遵循提交规范）。
 3. 推送分支后发起 PR 到 `main`。
-4. **签署 CLA**：你的第一个 PR 会触发 CLA assistant bot 评论，回复 `I have read the CLA Document and I hereby sign the CLA` 即可签署；回复 `recheck` 可重新检查签署状态。CLA 全文见 [.github/CLA.md](.github/CLA.md)，官方说明见 [AcmeStack Contributor License Agreement](https://acmestack.com/docs/contributing/contributor-license-agreement/)。请确保 `git config user.name` 与 GitHub 用户名一致。
+4. **签署 CLA**：你的第一个 PR 会触发 CLA assistant bot 评论，回复 `I have read the CLA Document and I hereby sign the CLA` 即可签署；回复 `recheck` 可重新检查签署状态。CLA 全文见 [.github/CLA.md](../../.github/CLA.md)，官方说明见 [AcmeStack Contributor License Agreement](https://acmestack.com/docs/contributing/contributor-license-agreement/)。请确保 `git config user.name` 与 GitHub 用户名一致。
 5. 确保 CI（build/vet/test + 交叉编译）通过。
 6. 维护者 review 并合并。
 

@@ -1,8 +1,9 @@
 # Gpi 项目沟通记录（MEMORY）
 
-- **文档版本**：v21（2026-08-13）
+- **文档版本**：v22（2026-08-14）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v22（2026-08-14）**：补录文档双语化——`docs/zh/` 与 `docs/en/` 两套目录；随后用户调整：**README 放仓库根**（`README.md` 中文 + `README.en.md` 英文，互相语言切换），`docs/zh|en` 各含其余 5 个文档；`deploy/k8s/README.md` 等代码配套说明保持单语原位；**`.github/CLA.md` 与 `.github/RELEASE_NOTES.md` 同文件逐句双语（每句中文后紧跟对应英文）**。
 - **v21（2026-08-13）**：补录 CLA workflow 修复 + 清理 useSpot 死参数。
 - **v20（2026-08-13）**：补录 example json 命名 + 删 Task.Time。
 - **v19（2026-08-13）**：补录 task 拆分 + examples yaml/json 分目录。
@@ -239,6 +240,14 @@
 - **决策**：`attachPrices`/`collectAndPrice` 的 `useSpot` 参数为**死参数**（attachPrices 总是同时拉 on-demand+spot 两份价格），已从签名与调用处移除。useSpot 真正生效点：`rankPlan` → `Metric.Rank(c, useSpot)`（cost.go 的 `CostPerHour(useSpot)`）→ `Launch.UseSpot` → provisioner。
 - **决策**：全部提交 GPG 签名（`user.signingkey=EE2178E827265FD0`，commit/tag 用 `-S`）。
 
+### 2026-08-14（文档双语化：docs/zh + docs/en + 根 README）
+
+- **背景**：用户要求"所有面向用户的文档中英双语，每语言一套"，除 issue/PR 模板与代码配套说明外都要两个语言版本，每种语言从 README 作入口链接全套。
+- **决策①（目录布局，用户两次澄清后定稿）**：**README 放仓库根**（GitHub 只渲染根目录 README.md，软链接不可靠）——`README.md`（中文主 README）+ `README.en.md`（英文），两者顶部互相语言切换（`README.en.md`/`README.md`）；其余文档在 **`docs/zh/`** 与 **`docs/en/`** 两个平级目录，各 5 个同名文档（`CONTRIBUTING.md`/`gpi-architecture.md`/`gpi-new-cloud.md`/`gpi-optimizer-extension.md`/`gpi-enhancements-over-skypilot.md`）；`deploy/k8s/README.md` 等**代码配套说明保持单语原位**、不迁移不双语。
+- **决策②（中文优先）**：中文为主文件、优先维护；英文随后同步。**`.github/CLA.md` 与 `.github/RELEASE_NOTES.md` 单文件逐句双语**（每句中文后紧跟对应英文）。
+- **决策③（链接深度）**：根 README → `docs/zh|en/` 文档用 `docs/zh|en/` 前缀，仓库根资源（`examples/`、`openapi.json`、`LICENSE`、`deploy/k8s/README.md`）直接用文件名；`docs/zh|en` 树内互链用文件名、根级资源用 `../../`。
+- **改动文件**：`git mv` 6 个中文文档 → `docs/zh/`（README 再 mv 到根 `README.md`）；`docs/en/README.md` → 根 `README.en.md`；新增 `docs/en/` 5 个英文翻译（架构/新云/优化器扩展/增强清单/CONTRIBUTING）+ 根 README 两份；`.github/CLA.md` 逐句双语、`.github/RELEASE_NOTES.md` 逐句双语；AGENTS.md 更新双语约定；MEMORY 升 v22。
+- 未纳入双语：`AGENTS.md`、`aiagents/MEMORY.md`、`.github/PULL_REQUEST_TEMPLATE.md`、`deploy/k8s/README.md`。
 
 ## 关键设计决策速查
 
@@ -264,3 +273,4 @@
 | 云专项配置 | 各云自己包内定义 `Config` struct + `LoadConfig()`（`config.Load().Section(CloudName, &c)`），`internal/config` 云无关、新云零改动 |
 | 两个 config | `internal/config`=文件配置（客户端启动偏好）；`internal/state` 的 `config` 表=运行时 KV（服务端共享，零消费者）。config.Load() 不读 state 表 |
 | 数据库表结构 | 8 张表按实体拆分（PK + 索引列 + data JSON 列），完整结构见架构文档 §9.0 |
+| 文档布局 | 根 `README.md`（中文）+ `README.en.md`（英文），互相语言切换；`docs/zh/` + `docs/en/` 各 5 个同名文档；`.github/CLA.md`/`RELEASE_NOTES.md` 单文件逐句双语（每句中文后紧跟英文）；`deploy/k8s/README.md` 等代码配套说明单语原位 |
