@@ -15,7 +15,7 @@
 ```
 
 <p align="center">
-  <strong>Gpi multi-cloud compute scheduling (gpi = "ji-pai", a homophone of the Chinese for "chicken fried")</strong>
+  <strong>Gpi multi-cloud compute scheduling</strong>
   <br/>
   <em>Manage all your AI compute</em>
 </p>
@@ -37,7 +37,7 @@
 </p>
 
 <p align="center">
-  Implemented in <code>Go</code> · module <code>github.com/acmestack/gpi</code> · CLI <code>gpi</code> (homophone of "ji-pai") · supported platforms <code>Linux</code> / <code>macOS</code>
+  Implemented in <code>Go</code> · module <code>github.com/acmestack/gpi</code> · CLI <code>gpi</code> · supported platforms <code>Linux</code> / <code>macOS</code>
 </p>
 
 ## Overview
