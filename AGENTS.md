@@ -25,12 +25,30 @@
 
 ### 本项目 docs/ 的特殊约定
 
-`docs/` 下的长期维护文档（`gpi-architecture.md`、`gpi-new-cloud.md`、`gpi-optimizer-extension.md` 等）采用**版本号记录在内容中**而非文件名：
+面向用户的文档采用**中英双语，中文优先**：
 
-- 文档头部写 `- **文档版本**：vN（YYYY-MM-DD）`，紧跟项目元信息（module/CLI/适用项目等），**随后直接是正文**。
-- 每次变更**原地更新**该文件并提升内容中的版本号，不另存新文件名。
-- 版本变更记录（changelog）**统一放在文档末尾**的 `## 版本记录` 区块（vN 降序），不要把 changelog 放在顶部影响正文重点。
-- 覆盖全局规则中的"另存新版本文件"条款（该条款针对一次性产物，长期文档遵循此约定）。
+- **README 放在仓库根**（GitHub 只渲染根目录 `README.md`）：
+  - `README.md` — 简体中文主 README（GitHub 首页默认展示）。
+  - `README.en.md` — 英文对应 README。
+  - 两者顶部互相放语言切换链接（中文 README → `README.en.md`，英文 README → `README.md`）。
+- **其余文档**在 `docs/` 下按语言分目录，每语言一套完整文档：
+  - `docs/zh/` — 简体中文（`CONTRIBUTING.md`/`gpi-architecture.md`/`gpi-new-cloud.md`/`gpi-optimizer-extension.md`/`gpi-enhancements-over-skypilot.md`）。
+  - `docs/en/` — 英文对应全套（同名文件）。
+  - 中文优先：新增/修改先做中文，随后同步英文。
+- 各 README 作为该语言入口，链接到本语言 `docs/` 下的全部文档。
+- `deploy/k8s/README.md`、issue/PR 模板等**代码配套说明保持单语原位**，不做双语。
+- **例外**：`.github/CLA.md` 与 `.github/RELEASE_NOTES.md` 采用**同文件逐句双语**（每句中文后紧跟对应英文）。
+- **同步规则**：修改中文文档后，必须同步更新英文对应文件（内容、版本号、链接一致）；反之亦然。
+- **单文件双语**（同一文件内**逐句翻译：每句中文后紧跟对应英文**）：`.github/CLA.md`、`.github/RELEASE_NOTES.md`。其余 issue/PR 模板保持单语。
+- 长期文档采用**版本号记录在内容中**而非文件名：
+
+  - 文档头部写 `- **文档版本**：vN（YYYY-MM-DD）`，紧跟项目元信息（module/CLI/适用项目等），**随后直接是正文**。
+  - 每次变更**原地更新**该文件并提升内容中的版本号，不另存新文件名。
+  - 版本变更记录（changelog）**统一放在文档末尾**的 `## 版本记录` 区块（vN 降序），不要把 changelog 放在顶部影响正文重点。
+  - 覆盖全局规则中的"另存新版本文件"条款（该条款针对一次性产物，长期文档遵循此约定）。
+- **链接深度**：
+  - 根 README 在仓库根——指向 `docs/zh|en/` 文档用 `docs/zh/...`/`docs/en/...` 前缀；指向仓库根资源（`examples/`、`openapi.json`、`LICENSE`、`deploy/k8s/README.md`）直接用文件名。
+  - `docs/zh/` 与 `docs/en/` 在仓库根下两级——语言树内文档互链用文件名；指向仓库根资源用 `../../` 前缀。
 
 ## 沟通记录（MEMORY）
 
