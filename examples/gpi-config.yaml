@@ -34,3 +34,17 @@ region: us-east-1
 zone: us-east-1a
 # Default spot preference (--spot overrides).
 use_spot: false
+
+# --- Logging ------------------------------------------------------------
+# Logs go to stdout by default (zap text format at info level). Set `file`
+# to enable file output with size-based rotation, gzip compression and
+# backup retention (via lumberjack). Precedence: CLI flag > config file >
+# env var (GPI_LOG_LEVEL / GPI_LOG_FILE / GPI_LOG_FORMAT) > default.
+logging:
+  level: info      # debug | info | warn | error
+  format: text     # text | json
+  # file: /var/log/gpi/gpi.log   # empty = stdout
+  # max_size: 100    # MB before rotating (default 100)
+  # max_backups: 5   # rotated files kept (default 5)
+  # max_age: 30      # days to keep rotated files (default 30)
+  # compress: true   # gzip rotated files (default true)

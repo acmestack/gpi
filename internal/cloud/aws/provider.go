@@ -7,7 +7,11 @@ import (
 	"time"
 
 	"github.com/acmestack/gpi/internal/cloud"
+	"github.com/acmestack/gpi/internal/logging"
 )
+
+// logger is the package logger, tagged with the module name.
+var logger = logging.WithName("aws")
 
 // CloudName is the canonical identifier for this provider, used by Name(),
 // Cloud() and the cloud registry.
@@ -74,6 +78,7 @@ func (p Provider) RunInstances(ctx context.Context, spec *cloud.LaunchSpec) ([]*
 		for i := range reused {
 			reused[i].Name = spec.NamePrefix
 		}
+		logger.Info("aws reuse running instances", "cluster", spec.NamePrefix, "region", spec.Region, "count", len(reused))
 		return reused, nil
 	}
 	if len(stopped) > 0 && spec.ResumeStoppedNodes {
@@ -86,6 +91,7 @@ func (p Provider) RunInstances(ctx context.Context, spec *cloud.LaunchSpec) ([]*
 		for _, inst := range stopped {
 			ids = append(ids, inst.ID)
 		}
+		logger.Info("aws resume stopped instances", "cluster", spec.NamePrefix, "region", spec.Region, "count", len(ids))
 		if err := p.StartInstances(ctx, spec.Region, ids); err != nil {
 			return nil, fmt.Errorf("start stopped instances: %w", err)
 		}
@@ -127,6 +133,7 @@ func (p Provider) RunInstances(ctx context.Context, spec *cloud.LaunchSpec) ([]*
 		launchSpec.Zone = subnet.AvailabilityZone
 		ids, err := client.RunInstances(ctx, &launchSpec)
 		if err == nil {
+			logger.Info("aws create instances", "cluster", spec.NamePrefix, "region", spec.Region, "zone", launchSpec.Zone, "instance", spec.InstanceType, "count", len(ids))
 			instances := make([]*cloud.Instance, 0, len(ids))
 			for _, id := range ids {
 				instances = append(instances, &cloud.Instance{

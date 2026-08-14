@@ -1,3 +1,12 @@
+// Package cli implements the gpi command-line interface.
+//
+// Output convention: everything a user runs a command to SEE is written via
+// logging.CLIPrintf / logging.CLIPrintln — tables, confirm prompts, streamed
+// (task)/(job)/(exec) progress lines, result summaries and error messages.
+// These are interactive UX, NOT diagnostics: they always write to stdout and
+// are never redirected by --log-file, so command output stays visible. The zap
+// logger (logging.Get) is reserved for background/daemon diagnostics (server,
+// provisioner, jobs scheduling, serve teardown failures, etc.).
 package cli
 
 import (
@@ -9,8 +18,13 @@ import (
 
 	"github.com/acmestack/gpi/internal/backend"
 	"github.com/acmestack/gpi/internal/buildinfo"
+	"github.com/acmestack/gpi/internal/logging"
 	"github.com/acmestack/gpi/internal/state"
 )
+
+// logger is the package logger, tagged with the module name. It is used for
+// background/daemon diagnostics only (see the output convention above).
+var logger = logging.WithName("cli")
 
 // Execute runs the gpi CLI and exits with a non-zero status on error.
 func Execute() {
@@ -30,6 +44,21 @@ func NewRootCommand() *cobra.Command {
 	}
 	// `gpi --version` prints the ASCII-art banner followed by the version.
 	root.SetVersionTemplate(fmt.Sprintf("%s\ngpi version {{.Version}}\n", Banner))
+
+	// Persistent logging flags, layered over env vars and config file:
+	// CLI flag > config file > env var > built-in default.
+	var (
+		logLevel  string
+		logFile   string
+		logFormat string
+	)
+	root.PersistentFlags().StringVar(&logLevel, "log-level", "", "log level: debug|info|warn|error (default: info)")
+	root.PersistentFlags().StringVar(&logFile, "log-file", "", "write logs to this file instead of stdout")
+	root.PersistentFlags().StringVar(&logFormat, "log-format", "", "log format: text|json (default: text)")
+	root.PersistentPreRunE = func(_ *cobra.Command, _ []string) error {
+		return setupLogging(logLevel, logFile, logFormat)
+	}
+
 	root.AddCommand(
 		newLaunchCommand(),
 		newStatusCommand(),

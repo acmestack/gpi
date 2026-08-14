@@ -1,12 +1,12 @@
 package cli
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/acmestack/gpi/internal/jobs"
+	"github.com/acmestack/gpi/internal/logging"
 )
 
 func newJobsCommand() *cobra.Command {
@@ -40,15 +40,16 @@ func newJobsSubmitCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Job %s registered (schedule=%q, retries=%d).\n", job.Name, job.Schedule, job.Retries)
+			logging.CLIPrintf("Job %s registered (schedule=%q, retries=%d).\n", job.Name, job.Schedule, job.Retries)
 			if runNow {
-				fmt.Printf("Running %s now...\n", job.Name)
+				logging.CLIPrintf("Running %s now...\n", job.Name)
 				if err := mgr.RunNow(cmd.Context(), job.Name, func(line string) {
-					fmt.Println("(job)", line)
+					// Streamed job output: interactive UX, not a log.
+					logging.CLIPrintln("(job)", line)
 				}); err != nil {
 					return err
 				}
-				fmt.Printf("Job %s finished.\n", job.Name)
+				logging.CLIPrintf("Job %s finished.\n", job.Name)
 			}
 			return nil
 		}),
@@ -69,15 +70,15 @@ func newJobsStatusCommand() *cobra.Command {
 		RunE: withCtx(func(c *ctx, _ *cobra.Command, _ []string) error {
 			jobList := c.store.ListJobs()
 			if len(jobList) == 0 {
-				fmt.Println("No jobs.")
+				logging.CLIPrintln("No jobs.")
 				return nil
 			}
-			fmt.Printf("%-20s %-12s %-10s %-10s %-10s %-16s %s\n",
+			logging.CLIPrintf("%-20s %-12s %-10s %-10s %-10s %-16s %s\n",
 				"NAME", "STATUS", "RUNS", "FAILS", "SCHEDULE", "NEXT RUN", "LAST")
 			for _, j := range jobList {
 				next := formatTime(j.NextRun)
 				last := formatTime(j.LastRun)
-				fmt.Printf("%-20s %-12s %-10d %-10d %-10s %-16s %s\n",
+				logging.CLIPrintf("%-20s %-12s %-10d %-10d %-10s %-16s %s\n",
 					j.Name, j.Status, j.RunCount, j.FailCount, j.Schedule, next, last)
 			}
 			return nil
@@ -93,11 +94,11 @@ func newJobsRunCommand() *cobra.Command {
 		RunE: withCtx(func(c *ctx, cmd *cobra.Command, args []string) error {
 			mgr := jobs.New(c.store, c.prov)
 			if err := mgr.RunNow(cmd.Context(), args[0], func(line string) {
-				fmt.Println("(job)", line)
+				logging.CLIPrintln("(job)", line) // streamed job output: UX, not a log
 			}); err != nil {
 				return err
 			}
-			fmt.Printf("Job %s finished.\n", args[0])
+			logging.CLIPrintf("Job %s finished.\n", args[0])
 			return nil
 		}),
 	}

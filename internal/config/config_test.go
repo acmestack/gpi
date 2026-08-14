@@ -185,3 +185,39 @@ region: eu-west-1
 		t.Fatalf("region = %q", c.Region())
 	}
 }
+
+func TestLoggingSection(t *testing.T) {
+	dir := t.TempDir()
+	writeTmp(t, dir, FileName, `
+logging:
+  level: debug
+  file: /var/log/gpi.log
+  format: json
+allowed_clouds: [aws]
+`)
+	SetPath(filepath.Join(dir, FileName))
+	defer Reset()
+
+	c := Load()
+	if c.LogLevel() != "debug" {
+		t.Fatalf("log level = %q", c.LogLevel())
+	}
+	if c.LogFile() != "/var/log/gpi.log" {
+		t.Fatalf("log file = %q", c.LogFile())
+	}
+	if c.LogFormat() != "json" {
+		t.Fatalf("log format = %q", c.LogFormat())
+	}
+}
+
+func TestLoggingSectionAbsent(t *testing.T) {
+	dir := t.TempDir()
+	SetPath(filepath.Join(dir, FileName))
+	defer Reset()
+
+	c := Load()
+	if c.LogLevel() != "" || c.LogFile() != "" || c.LogFormat() != "" {
+		t.Fatalf("absent logging section should yield empty accessors: level=%q file=%q format=%q",
+			c.LogLevel(), c.LogFile(), c.LogFormat())
+	}
+}

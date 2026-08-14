@@ -1,9 +1,6 @@
 package server
 
-import (
-	"net/http"
-	"time"
-)
+import "net/http"
 
 // corsMiddleware adds permissive CORS headers (SkyPilot defaults to '*').
 type corsMiddleware struct {
@@ -44,40 +41,4 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
-}
-
-// securityHeadersMiddleware adds basic security headers to all responses.
-type securityHeadersMiddleware struct{}
-
-func (*securityHeadersMiddleware) Wrap(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		h := w.Header()
-		h.Set("X-Content-Type-Options", "nosniff")
-		h.Set("X-Frame-Options", "DENY")
-		h.Set("Referrer-Policy", "no-referrer")
-		next.ServeHTTP(w, r)
-	})
-}
-
-// loggingMiddleware logs each request method/path/duration.
-type loggingMiddleware struct {
-	logf func(string, ...any)
-}
-
-func (m *loggingMiddleware) Wrap(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := nowMs()
-		next.ServeHTTP(w, r)
-		if m.logf != nil {
-			m.logf("%s %s (%dms)", r.Method, r.URL.Path, int(nowMs()-start))
-		}
-	})
-}
-
-func nowMs() int64 {
-	return time.Now().UnixMilli()
-}
-
-func unixMillis() int64 {
-	return time.Now().UnixMilli()
 }

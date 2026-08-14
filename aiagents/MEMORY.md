@@ -1,8 +1,9 @@
 # Gpi 项目沟通记录（MEMORY）
 
-- **文档版本**：v21（2026-08-13）
+- **文档版本**：v22（2026-08-15）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v22（2026-08-15）**：补录 logging 体系完整决策（包级 WithName logger、CLIPrintf 通道、补充 cloud/backend/optimizer 关键日志）+ server middleware 拆分文件。
 - **v21（2026-08-13）**：补录 CLA workflow 修复 + 清理 useSpot 死参数。
 - **v20（2026-08-13）**：补录 example json 命名 + 删 Task.Time。
 - **v19（2026-08-13）**：补录 task 拆分 + examples yaml/json 分目录。
@@ -239,6 +240,19 @@
 - **决策**：`attachPrices`/`collectAndPrice` 的 `useSpot` 参数为**死参数**（attachPrices 总是同时拉 on-demand+spot 两份价格），已从签名与调用处移除。useSpot 真正生效点：`rankPlan` → `Metric.Rank(c, useSpot)`（cost.go 的 `CostPerHour(useSpot)`）→ `Launch.UseSpot` → provisioner。
 - **决策**：全部提交 GPG 签名（`user.signingkey=EE2178E827265FD0`，commit/tag 用 `-S`）。
 
+### 2026-08-15（logging 体系定稿 · server middleware 拆分）
+
+- **决策**：日志体系（zap v1.28.0 + lumberjack v2.2.1，vendor 模式）定稿。双通道：诊断日志（`internal/logging`）与 CLI 用户输出（`logging.CLIPrintf`/`CLIPrintln`/`CLIPrint`，写 stdout、不被 `--log-file` 重定向）。
+- **决策**：包级 logger 统一模式——每个包在同包名 go 文件最顶部（import 之后）定义 `var logger = logging.WithName("模块名")`；**禁止**结构体 `Log *logging.Logger` 字段 + 构造函数初始化（已从 provisioner/serve/jobs/server/metacache/backend 三后端/cloud aws+aliyun 全部移除）。`WithName` 每次调用经 `Get()` 动态解析 base logger，故包级 var 在 `Setup` 前创建仍跟随后续配置。
+- **决策**：`Logger` 为 `zap.SugaredLogger` 薄封装，级别方法签名 `Info(msg string, kvs ...any)`（禁止 `zap.String` 等字段构造）；`AddCallerSkip(1)` 正确（SugaredLogger 内部抵消一层）。`internal/logging` 拆分 7 文件：logging.go/setup.go/config.go/encoder.go/rotate.go/level.go/cli.go。
+- **决策**：日志配置优先级 CLI flag > 环境变量（`GPI_LOG_LEVEL`/`GPI_LOG_FILE`/`GPI_LOG_FORMAT`）> config `logging:` 段 > 默认（stdout/info/text）；轮转默认 MaxSize=100MB/MaxBackups=5/MaxAge=30/Compress=true。
+- **决策**：`/healthz` 请求不记日志；移除冗余日志（backend launch、optimizing placement、backend.Manager.Log 字段）；移除仅测试用的 `Text()`。
+- **决策**：为 cloud 关键路径补日志——aws/aliyun `RunInstances` 决策分支（reuse running / resume stopped / create instances，Info 级）；backend docker/local/existing 生命周期（launch/teardown/stop/start）；optimizer 关键点（candidates collected / chose placement，Debug 级）。gpilet collect、state、task、optimizer 纯计算层不加（高频/低层/无副作用，调用方已覆盖）。
+- **决策**：`internal/server` 的多个 middleware 各自独立文件：`middleware.go`（接口+chain）、`cors_middleware.go`、`security_headers_middleware.go`、`logging_middleware.go`（含 `nowMs`）；删除无引用的 `unixMillis`。
+- **决策**：import 分组三段式（系统/第三方/内部），统一 `~/go/bin/goimports -local github.com/acmestack/gpi -w`；约定已写入 AGENTS.md「Go 代码约定」。
+- **决策**：json tag 复核结论——state snake_case 为存储格式（API 输出由 `applyKeyStyle` 转 camelCase）、aws/aliyun PascalCase 为云厂商响应格式、task 已小驼峰、gpilet snake_case 为磁盘协议，均无需改动。
+- **决策**：middleware 文件名简化——`cors.go`、`security.go`、`logging.go`（`middleware.go` 保留接口+chain）；`unixMillis` 死代码删除。
+- **决策**：`internal/cli` 与 `cmd/gpilet` 也统一包级 `var logger = logging.WithName(...)` 模式（cli/serve.go 的 `logging.Get().Warn` 改 `logger.Warn`），全库不再有散落的 `Log` 字段或 `logging.Get()` 调用。
 
 ## 关键设计决策速查
 

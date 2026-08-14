@@ -6,10 +6,14 @@ import (
 	"time"
 
 	"github.com/acmestack/gpi/internal/backend"
+	"github.com/acmestack/gpi/internal/logging"
 	"github.com/acmestack/gpi/internal/optimizer"
 	"github.com/acmestack/gpi/internal/state"
 	"github.com/acmestack/gpi/internal/task"
 )
+
+// logger is the package logger, tagged with the module name.
+var logger = logging.WithName("jobs")
 
 // Manager registers and runs scheduled/on-demand jobs (Sky Jobs analog).
 type Manager struct {
@@ -56,11 +60,13 @@ func (m *Manager) Submit(name, taskPath, schedule string, retries int, optimizer
 		}
 	}
 	m.Store.AddJob(job)
+	logger.Info("job submitted", "job", job.Name, "schedule", job.Schedule)
 	return job, nil
 }
 
 // RunNow executes the named job's task, retrying per its configured retries.
 func (m *Manager) RunNow(ctx context.Context, name string, stream func(string)) error {
+	logger.Info("running job", "job", name)
 	job, err := m.Store.GetJob(name)
 	if err != nil {
 		return err
@@ -93,6 +99,7 @@ func (m *Manager) RunNow(ctx context.Context, name string, stream func(string)) 
 				j.LastStatus = "success"
 				return nil
 			})
+			logger.Info("job finished", "job", name)
 			return nil
 		}
 		m.Store.UpdateJob(name, func(j *state.Job) error {
@@ -106,6 +113,7 @@ func (m *Manager) RunNow(ctx context.Context, name string, stream func(string)) 
 		j.Status = "failed"
 		return nil
 	})
+	logger.Error("job failed", "job", name, "error", lastErr)
 	return lastErr
 }
 

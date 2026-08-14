@@ -23,6 +23,7 @@ func newLocalBackend(store *state.Store) *localBackend {
 func (l *localBackend) Name() string { return task.BackendLocal }
 
 func (l *localBackend) Launch(ctx context.Context, name string, ts *task.Task, _ *optimizer.Launch) (*state.Cluster, error) {
+	logger.Info("local launch", "cluster", name, "backend", task.BackendLocal)
 	cluster := &state.Cluster{
 		Name:      name,
 		Status:    state.ClusterUp,
@@ -63,6 +64,7 @@ func (l *localBackend) Exec(ctx context.Context, name, cmd string, stream func(l
 
 // Down just removes the state record (nothing to tear down locally).
 func (l *localBackend) Down(_ context.Context, name string) error {
+	logger.Info("local teardown", "cluster", name)
 	return l.store.DeleteCluster(name)
 }
 

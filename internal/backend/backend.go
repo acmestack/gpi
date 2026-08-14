@@ -3,10 +3,14 @@ package backend
 import (
 	"context"
 
+	"github.com/acmestack/gpi/internal/logging"
 	"github.com/acmestack/gpi/internal/optimizer"
 	"github.com/acmestack/gpi/internal/state"
 	"github.com/acmestack/gpi/internal/task"
 )
+
+// logger is the package logger, tagged with the module name.
+var logger = logging.WithName("backend")
 
 // Backend is an execution backend: how a task's setup/run is executed and
 // what a "cluster" means. This mirrors SkyPilot's backend layer (cloud VM,

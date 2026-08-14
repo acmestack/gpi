@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/acmestack/gpi/internal/gpilet"
+	"github.com/acmestack/gpi/internal/logging"
 )
 
 const usage = `gpilet - gpi node agent (skylet equivalent)
@@ -20,6 +21,9 @@ Usage:
                                                writing status.json into DIR
   gpilet status [--dir DIR]                    print the latest node status (JSON)
 `
+
+// logger is the package logger, tagged with the module name.
+var logger = logging.WithName("gpilet")
 
 func main() {
 	if len(os.Args) < 2 {
@@ -62,7 +66,7 @@ func serveCmd(args []string) {
 	write := func() {
 		st, err := gpilet.Collect(prev)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "gpilet: collect:", err)
+			logger.Error("collect failed", "error", err)
 			return
 		}
 		st.GpiletUptime = int64(time.Since(start).Seconds())
@@ -73,12 +77,17 @@ func serveCmd(args []string) {
 		}
 		tmp := filepath.Join(dir, "status.json.tmp")
 		if err := os.WriteFile(tmp, data, 0o644); err != nil {
+			logger.Error("write status failed", "error", err)
 			return
 		}
-		os.Rename(tmp, filepath.Join(dir, "status.json"))
+		if err := os.Rename(tmp, filepath.Join(dir, "status.json")); err != nil {
+			logger.Error("rename status failed", "error", err)
+			return
+		}
 	}
 
 	write()
+	logger.Info("gpilet serving", "dir", dir, "interval", interval)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -87,6 +96,7 @@ func serveCmd(args []string) {
 			write()
 		case <-sigCh:
 			write()
+			logger.Info("gpilet stopped")
 			return
 		}
 	}
@@ -99,5 +109,5 @@ func statusCmd(args []string) {
 		fmt.Fprintf(os.Stderr, "gpilet: no status yet at %s/status.json: %v\n", dir, err)
 		os.Exit(1)
 	}
-	fmt.Print(string(data))
+	logging.CLIPrint(string(data))
 }
