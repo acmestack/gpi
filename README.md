@@ -1,21 +1,9 @@
-# Gpi
-
-```text
-           _____   _____   _____ 
-          / ____| |  __ \ |_   _|
-         | |  __  | |__) |  | |  
-         | | |_ | |  ___/   | |  
-         | |__| | | |      _| |_ 
-          \_____| |_|     |_____|
-
-          Multi-Cloud Compute Scheduling
-          =============================
-          provision . optimize . serve . jobs
-          Go  |  aliyun + aws  |  zero-SDK
-```
+<p align="center">
+  <img src="logo.svg" alt="Gpi" width="320"/>
+</p>
 
 <p align="center">
-  <strong>Gpi 多云算力调度器（"机排/鸡排"）（multi-cloud compute scheduling）</strong>
+  <strong>Gpi 多云算力调度器（"机排/鸡排"）</strong>
   <br/>
   <em>Manage all your AI compute</em>
 </p>
@@ -54,8 +42,12 @@ Gpi 是一个轻量、多云、可自托管的算力调度器。用任务 YAML �
 - **可扩展**：[接入新云](docs/zh/gpi-new-cloud.md) · [扩展 Optimizer](docs/zh/gpi-optimizer-extension.md)
 
 > 与 SkyPilot 的对比与增强差异见 [docs/gpi-enhancements-over-skypilot.md](docs/zh/gpi-enhancements-over-skypilot.md)。
->
-> 架构图见 [docs/gpi-architecture.md](docs/zh/gpi-architecture.md#2-架构总览)。
+
+### 架构总览
+
+![架构总览](docs/zh/gpi-architecture-overview.svg)
+
+> 详细架构设计见 [docs/gpi-architecture.md](docs/zh/gpi-architecture.md#2-架构总览)。
 
 ## Getting started
 

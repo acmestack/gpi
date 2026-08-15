@@ -1,21 +1,9 @@
-# Gpi
-
-```text
-           _____   _____   _____
-          / ____| |  __ \ |_   _|
-         | |  __  | |__) |  | |
-         | | |_ | |  ___/   | |
-         | |__| | | |      _| |_
-          \_____| |_|     |_____|
-
-          Multi-Cloud Compute Scheduling
-          =============================
-          provision . optimize . serve . jobs
-          Go  |  aliyun + aws  |  zero-SDK
-```
+<p align="center">
+  <img src="logo.svg" alt="Gpi" width="320"/>
+</p>
 
 <p align="center">
-  <strong>Gpi multi-cloud compute scheduling</strong>
+  <strong>Gpi multi-cloud scheduler</strong>
   <br/>
   <em>Manage all your AI compute</em>
 </p>
@@ -54,8 +42,12 @@ Gpi is a lightweight, multi-cloud, self-hostable compute scheduler. Declare your
 - **Extensible**: [add a new cloud](docs/en/gpi-new-cloud.md) · [extend the Optimizer](docs/en/gpi-optimizer-extension.md)
 
 > For a comparison with SkyPilot and the enhancement differences, see [docs/gpi-enhancements-over-skypilot.md](docs/en/gpi-enhancements-over-skypilot.md).
->
-> For the architecture diagram, see [docs/gpi-architecture.md](docs/en/gpi-architecture.md).
+
+### Architecture Overview
+
+![Architecture Overview](docs/en/gpi-architecture-overview.svg)
+
+> For the full architecture design document, see [docs/gpi-architecture.md](docs/en/gpi-architecture.md).
 
 ## Getting started
 

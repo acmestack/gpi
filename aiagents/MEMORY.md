@@ -1,8 +1,11 @@
 # Gpi 项目沟通记录（MEMORY）
 
-- **文档版本**：v24（2026-08-15）
+- **文档版本**：v27（2026-08-15）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v27（2026-08-15）**：架构图 v65→v67——移除 Rate Limiting；执行后端节点放大；云层丰富（aliyun ECS / aws EC2 / gcp+azure 计划 / 更多 + VPC/SG/Subnet/Spot/Pricing）；新增节点层（Ray+gpilet）；扩展能力改右侧纵栏；颜色对比增强。架构文档 v66→v67。
+- **v26（2026-08-15）**：架构图 v64→v65——overview 从 LR 流程图改为分层带状布局（消除线交叉），横切能力紧跟 REST API 右侧，新增扩展能力区（接入新云/扩展 Optimizer/自定义 Encoder），容器尺寸修正（redis 不再溢出），英文版全部翻译；同时将架构图嵌入 README 中英文首页。
+- **v25（2026-08-15）**：架构图从 mermaid 替换为 SVG（透明背景、模块分色、圆角细线、紧凑对齐），中英文版同步，架构文档 v62→v63。分支 `fix-docs-links`。
 - **v24（2026-08-15）**：新增 `upstream` remote（`acmestack/gpi`）并修复分支基线（本地 main 曾落后上游 1 提交致 PR 冲突，教训：切新分支前先 `git fetch upstream && git reset --hard upstream/main`）；新增分支 `fix-docs-links`——修复根 README 指向 `examples/`、`openapi.json`、`deploy/k8s/README.md`、`LICENSE` 的错误 `../` 前缀（仓库根资源直接用文件名）；架构文档 v61→v62，两张 mermaid 图补 logging 横切能力节点 + 包结构新增 `internal/logging`，中英同步。
 - **v23（2026-08-15）**：补录 logging 体系完整决策（包级 WithName logger、CLIPrintf 通道、补充 cloud/backend/optimizer 关键日志）+ server middleware 拆分文件。
 - **v22（2026-08-14）**：补录文档双语化——`docs/zh/` 与 `docs/en/` 两套目录；随后用户调整：**README 放仓库根**（`README.md` 中文 + `README.en.md` 英文，互相语言切换），`docs/zh|en` 各含其余 5 个文档；`deploy/k8s/README.md` 等代码配套说明保持单语原位；**`.github/CLA.md` 与 `.github/RELEASE_NOTES.md` 同文件逐句双语（每句中文后紧跟对应英文）**。
