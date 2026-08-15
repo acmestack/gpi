@@ -1,0 +1,169 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 520" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5.5" markerHeight="5.5" orient="auto">
+      <path d="M1,1 L7,4 L1,7" fill="none" stroke="#94a3b8" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      .t { font-size: 8.5px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; }
+      .n { font-size: 9.5px; font-weight: 500; }
+      .ns { font-size: 8px; fill: #6b7280; }
+      .arr { stroke: #c1c9d4; stroke-width: 1; fill: none; marker-end: url(#a); }
+    </style>
+  </defs>
+
+  <!-- Access Layer -->
+  <rect x="20" y="14" width="540" height="50" rx="6" fill="#EFF6FF" stroke="#BFDBFE" stroke-width="0.7"/>
+  <text x="290" y="28" text-anchor="middle" class="t" fill="#2563EB">Access Layer</text>
+  <rect x="36" y="34" width="80" height="24" rx="4" fill="#3B82F6" stroke="#2563EB" stroke-width="0.6"/>
+  <text x="76" y="50" text-anchor="middle" class="n" fill="#fff">gpi CLI</text>
+  <rect x="126" y="34" width="80" height="24" rx="4" fill="#3B82F6" stroke="#2563EB" stroke-width="0.6"/>
+  <text x="166" y="50" text-anchor="middle" class="n" fill="#fff">REST API</text>
+  <rect x="216" y="34" width="80" height="24" rx="4" fill="#3B82F6" stroke="#2563EB" stroke-width="0.6"/>
+  <text x="256" y="50" text-anchor="middle" class="n" fill="#fff">Jobs scheduler</text>
+  <rect x="306" y="34" width="108" height="24" rx="4" fill="#3B82F6" stroke="#2563EB" stroke-width="0.6"/>
+  <text x="360" y="50" text-anchor="middle" class="n" fill="#fff">serve (gpi serve)</text>
+  <rect x="424" y="34" width="124" height="24" rx="4" fill="#3B82F6" stroke="#2563EB" stroke-width="0.6"/>
+  <text x="486" y="50" text-anchor="middle" class="n" fill="#fff">jobs cron (gpi jobs)</text>
+
+  <line x1="290" y1="64" x2="290" y2="78" class="arr"/>
+
+  <!-- Cross-cutting -->
+  <rect x="20" y="80" width="540" height="50" rx="6" fill="#F0FDFA" stroke="#99F6E4" stroke-width="0.7"/>
+  <text x="290" y="94" text-anchor="middle" class="t" fill="#0D9488">Cross-cutting</text>
+  <rect x="36" y="100" width="118" height="24" rx="4" fill="#14B8A6" stroke="#0D9488" stroke-width="0.6"/>
+  <text x="95" y="114" text-anchor="middle" class="n" fill="#fff">Middleware</text>
+  <rect x="166" y="100" width="118" height="24" rx="4" fill="#14B8A6" stroke="#0D9488" stroke-width="0.6"/>
+  <text x="225" y="114" text-anchor="middle" class="n" fill="#fff">OpenAPI</text>
+  <rect x="296" y="100" width="118" height="24" rx="4" fill="#14B8A6" stroke="#0D9488" stroke-width="0.6"/>
+  <text x="355" y="114" text-anchor="middle" class="n" fill="#fff">Token</text>
+  <rect x="426" y="100" width="118" height="24" rx="4" fill="#14B8A6" stroke="#0D9488" stroke-width="0.6"/>
+  <text x="485" y="114" text-anchor="middle" class="n" fill="#fff">Logging</text>
+
+  <line x1="290" y1="130" x2="290" y2="144" class="arr"/>
+
+  <!-- Control Plane -->
+  <rect x="20" y="148" width="540" height="72" rx="6" fill="#F0FDF4" stroke="#BBF7D0" stroke-width="0.7"/>
+  <text x="290" y="162" text-anchor="middle" class="t" fill="#16A34A">Control Plane</text>
+  <rect x="36" y="170" width="52" height="24" rx="4" fill="#22C55E" stroke="#16A34A" stroke-width="0.6"/>
+  <text x="62" y="184" text-anchor="middle" class="n" fill="#fff">task</text>
+  <rect x="96" y="170" width="72" height="24" rx="4" fill="#22C55E" stroke="#16A34A" stroke-width="0.6"/>
+  <text x="132" y="184" text-anchor="middle" class="n" fill="#fff">optimizer</text>
+  <rect x="176" y="170" width="92" height="24" rx="4" fill="#22C55E" stroke="#16A34A" stroke-width="0.6"/>
+  <text x="222" y="184" text-anchor="middle" class="n" fill="#fff">catalog+cache</text>
+  <rect x="276" y="170" width="108" height="24" rx="4" fill="#22C55E" stroke="#16A34A" stroke-width="0.6"/>
+  <text x="330" y="184" text-anchor="middle" class="n" fill="#fff" font-weight="600">backend.Manager</text>
+  <rect x="392" y="170" width="80" height="24" rx="4" fill="#22C55E" stroke="#16A34A" stroke-width="0.6"/>
+  <text x="432" y="184" text-anchor="middle" class="n" fill="#fff">provisioner</text>
+  <rect x="480" y="170" width="70" height="24" rx="4" fill="#22C55E" stroke="#16A34A" stroke-width="0.6"/>
+  <text x="515" y="184" text-anchor="middle" class="n" fill="#fff">serve/jobs</text>
+  <rect x="36" y="198" width="514" height="16" rx="3" fill="none" stroke="#BBF7D0" stroke-width="0.5" stroke-dasharray="2,2"/>
+  <text x="290" y="210" text-anchor="middle" style="font-size:7.5px;fill:#6b7280;">Extensible: New Cloud / Custom Optimizer / Middleware / Response Encoder</text>
+
+  <line x1="290" y1="220" x2="290" y2="234" class="arr"/>
+
+  <!-- Execution Backends -->
+  <rect x="20" y="238" width="540" height="60" rx="6" fill="#FAF5FF" stroke="#DDD6FE" stroke-width="0.7"/>
+  <text x="290" y="254" text-anchor="middle" class="t" fill="#7C3AED">Execution Backends</text>
+  <rect x="50" y="262" width="110" height="28" rx="5" fill="#A78BFA" stroke="#8B5CF6" stroke-width="0.6"/>
+  <text x="105" y="278" text-anchor="middle" class="n" fill="#fff">cloud</text>
+  <rect x="172" y="262" width="110" height="28" rx="5" fill="#A78BFA" stroke="#8B5CF6" stroke-width="0.6"/>
+  <text x="227" y="278" text-anchor="middle" class="n" fill="#fff">existing</text>
+  <rect x="294" y="262" width="110" height="28" rx="5" fill="#A78BFA" stroke="#8B5CF6" stroke-width="0.6"/>
+  <text x="349" y="278" text-anchor="middle" class="n" fill="#fff">docker</text>
+  <rect x="416" y="262" width="110" height="28" rx="5" fill="#A78BFA" stroke="#8B5CF6" stroke-width="0.6"/>
+  <text x="471" y="278" text-anchor="middle" class="n" fill="#fff">local</text>
+
+  <line x1="290" y1="298" x2="290" y2="312" class="arr"/>
+
+  <!-- Provider Layer -->
+  <rect x="20" y="316" width="540" height="52" rx="6" fill="#FFFBEB" stroke="#FDE68A" stroke-width="0.7"/>
+  <text x="290" y="330" text-anchor="middle" class="t" fill="#B45309">Provider Layer</text>
+  <rect x="36" y="338" width="80" height="20" rx="3" fill="#F59E0B" stroke="#D97706" stroke-width="0.5"/>
+  <text x="76" y="350" text-anchor="middle" class="n" fill="#fff">aliyun ECS</text>
+  <rect x="126" y="338" width="80" height="20" rx="3" fill="#F59E0B" stroke="#D97706" stroke-width="0.5"/>
+  <text x="166" y="350" text-anchor="middle" class="n" fill="#fff">aws EC2</text>
+  <rect x="216" y="338" width="96" height="20" rx="3" fill="#F59E0B" stroke="#D97706" stroke-width="0.5"/>
+  <text x="264" y="350" text-anchor="middle" class="n" fill="#fff">Kubernetes</text>
+  <rect x="322" y="338" width="80" height="20" rx="3" fill="#F59E0B" stroke="#D97706" stroke-width="0.5"/>
+  <text x="362" y="350" text-anchor="middle" class="n" fill="#fff">gcp</text>
+  <rect x="412" y="338" width="80" height="20" rx="3" fill="#F59E0B" stroke="#D97706" stroke-width="0.5"/>
+  <text x="452" y="350" text-anchor="middle" class="n" fill="#fff">azure</text>
+  <rect x="502" y="338" width="50" height="20" rx="3" fill="#FCD34D" stroke="#FBBF24" stroke-width="0.5" stroke-dasharray="3,2"/>
+  <text x="527" y="350" text-anchor="middle" class="ns" fill="#92400E">more</text>
+  <rect x="36" y="360" width="72" height="12" rx="2" fill="#FEF3C7" stroke="#FBBF24" stroke-width="0.4"/>
+  <text x="72" y="368" text-anchor="middle" style="font-size:7px;fill:#92400E;">VPC / SG</text>
+  <rect x="116" y="360" width="64" height="12" rx="2" fill="#FEF3C7" stroke="#FBBF24" stroke-width="0.4"/>
+  <text x="148" y="368" text-anchor="middle" style="font-size:7px;fill:#92400E;">Subnet</text>
+  <rect x="188" y="360" width="80" height="12" rx="2" fill="#FEF3C7" stroke="#FBBF24" stroke-width="0.4"/>
+  <text x="228" y="368" text-anchor="middle" style="font-size:7px;fill:#92400E;">Spot/On-Demand</text>
+  <rect x="276" y="360" width="92" height="12" rx="2" fill="#FEF3C7" stroke="#FBBF24" stroke-width="0.4"/>
+  <text x="322" y="368" text-anchor="middle" style="font-size:7px;fill:#92400E;">Instance Specs</text>
+  <rect x="376" y="360" width="80" height="12" rx="2" fill="#FEF3C7" stroke="#FBBF24" stroke-width="0.4"/>
+  <text x="416" y="368" text-anchor="middle" style="font-size:7px;fill:#92400E;">Pricing API</text>
+
+  <line x1="150" y1="368" x2="150" y2="382" class="arr"/>
+
+  <!-- Nodes -->
+  <rect x="20" y="386" width="260" height="44" rx="6" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="0.7"/>
+  <text x="150" y="400" text-anchor="middle" class="t" fill="#6D28D9">Nodes</text>
+  <rect x="36" y="406" width="110" height="18" rx="3" fill="#8B5CF6" stroke="#7C3AED" stroke-width="0.5"/>
+  <text x="91" y="417" text-anchor="middle" class="n" fill="#fff">Ray cluster</text>
+  <rect x="156" y="406" width="110" height="18" rx="3" fill="#8B5CF6" stroke="#7C3AED" stroke-width="0.5"/>
+  <text x="211" y="417" text-anchor="middle" class="n" fill="#fff">gpilet agent</text>
+
+  <!-- Persistence -->
+  <rect x="292" y="386" width="268" height="44" rx="6" fill="#F9FAFB" stroke="#E5E7EB" stroke-width="0.7"/>
+  <text x="426" y="400" text-anchor="middle" class="t" fill="#6B7280">Persistence</text>
+  <rect x="306" y="406" width="54" height="18" rx="3" fill="#9CA3AF" stroke="#6B7280" stroke-width="0.5"/>
+  <text x="333" y="417" text-anchor="middle" class="n" fill="#fff">file</text>
+  <rect x="368" y="406" width="54" height="18" rx="3" fill="#9CA3AF" stroke="#6B7280" stroke-width="0.5"/>
+  <text x="395" y="417" text-anchor="middle" class="n" fill="#fff">sqlite</text>
+  <rect x="430" y="406" width="54" height="18" rx="3" fill="#9CA3AF" stroke="#6B7280" stroke-width="0.5"/>
+  <text x="457" y="417" text-anchor="middle" class="n" fill="#fff">mysql</text>
+  <rect x="492" y="406" width="54" height="18" rx="3" fill="#9CA3AF" stroke="#6B7280" stroke-width="0.5"/>
+  <text x="519" y="417" text-anchor="middle" class="n" fill="#fff">redis</text>
+
+  <!-- Extensibility (right sidebar) -->
+  <rect x="580" y="14" width="160" height="416" rx="8" fill="#FFF7ED" stroke="#FDBA74" stroke-width="0.7" stroke-dasharray="5,3"/>
+  <text x="660" y="32" text-anchor="middle" class="t" fill="#C2410C">Extensibility</text>
+
+  <rect x="594" y="44" width="132" height="36" rx="5" fill="#FED7AA" stroke="#FB923C" stroke-width="0.6"/>
+  <text x="660" y="58" text-anchor="middle" class="n" fill="#9A3412">New Cloud Provider</text>
+  <text x="660" y="72" text-anchor="middle" class="ns" fill="#9A3412">Implement Provider + catalog.Source</text>
+
+  <rect x="594" y="88" width="132" height="36" rx="5" fill="#FED7AA" stroke="#FB923C" stroke-width="0.6"/>
+  <text x="660" y="102" text-anchor="middle" class="n" fill="#9A3412">Custom Optimizer</text>
+  <text x="660" y="116" text-anchor="middle" class="ns" fill="#9A3412">Implement Optimizer + register</text>
+
+  <rect x="594" y="132" width="132" height="36" rx="5" fill="#FED7AA" stroke="#FB923C" stroke-width="0.6"/>
+  <text x="660" y="146" text-anchor="middle" class="n" fill="#9A3412">Custom Middleware</text>
+  <text x="660" y="160" text-anchor="middle" class="ns" fill="#9A3412">server.Middleware interface</text>
+
+  <rect x="594" y="176" width="132" height="36" rx="5" fill="#FED7AA" stroke="#FB923C" stroke-width="0.6"/>
+  <text x="660" y="190" text-anchor="middle" class="n" fill="#9A3412">Response Encoder</text>
+  <text x="660" y="204" text-anchor="middle" class="ns" fill="#9A3412">Custom API response format</text>
+
+  <rect x="594" y="220" width="132" height="36" rx="5" fill="#FED7AA" stroke="#FB923C" stroke-width="0.6"/>
+  <text x="660" y="234" text-anchor="middle" class="n" fill="#9A3412">State Backend</text>
+  <text x="660" y="248" text-anchor="middle" class="ns" fill="#9A3412">Pluggable storage backends</text>
+
+  <rect x="594" y="264" width="132" height="36" rx="5" fill="#FED7AA" stroke="#FB923C" stroke-width="0.6"/>
+  <text x="660" y="278" text-anchor="middle" class="n" fill="#9A3412">Credential Mgmt</text>
+  <text x="660" y="292" text-anchor="middle" class="ns" fill="#9A3412">credentials per-task</text>
+
+  <rect x="594" y="308" width="132" height="36" rx="5" fill="#FED7AA" stroke="#FB923C" stroke-width="0.6"/>
+  <text x="660" y="322" text-anchor="middle" class="n" fill="#9A3412">API Token Auth</text>
+  <text x="660" y="336" text-anchor="middle" class="ns" fill="#9A3412">Bearer token + rotation</text>
+
+  <rect x="594" y="352" width="132" height="36" rx="5" fill="#FED7AA" stroke="#FB923C" stroke-width="0.6"/>
+  <text x="660" y="366" text-anchor="middle" class="n" fill="#9A3412">OpenAPI / Swagger</text>
+  <text x="660" y="380" text-anchor="middle" class="ns" fill="#9A3412">Auto-generated API docs</text>
+
+  <rect x="594" y="396" width="132" height="24" rx="5" fill="#FED7AA" stroke="#FB923C" stroke-width="0.6" stroke-dasharray="3,2"/>
+  <text x="660" y="412" text-anchor="middle" class="n" fill="#9A3412">More extensions ...</text>
+
+  <!-- Connection lines -->
+  <line x1="560" y1="200" x2="594" y2="160" class="arr" stroke-dasharray="4,3"/>
+  <line x1="560" y1="250" x2="594" y2="250" class="arr" stroke-dasharray="4,3"/>
+  <line x1="560" y1="320" x2="594" y2="340" class="arr" stroke-dasharray="4,3"/>
+</svg>

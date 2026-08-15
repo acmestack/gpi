@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+  <defs>
+    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#14B8A6"/>
+      <stop offset="100%" stop-color="#0D9488"/>
+    </linearGradient>
+    <linearGradient id="g3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22C55E"/>
+      <stop offset="100%" stop-color="#16A34A"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Three overlapping circles: multi-cloud orchestration -->
+  <circle cx="36" cy="40" r="22" fill="url(#g1)" opacity="0.85"/>
+  <circle cx="56" cy="40" r="22" fill="url(#g2)" opacity="0.85"/>
+  <circle cx="46" cy="22" r="22" fill="url(#g3)" opacity="0.85"/>
+
+  <!-- Central orchestration point -->
+  <circle cx="46" cy="34" r="4.5" fill="#fff"/>
+  <circle cx="46" cy="34" r="2.2" fill="#1E40AF"/>
+
+  <!-- Wordmark: gpi -->
+  <text x="86" y="46" font-size="34" font-weight="700" fill="#1E293B" letter-spacing="-0.5">gpi</text>
+
+  <!-- Tagline -->
+  <text x="152" y="46" font-size="12" font-weight="400" fill="#94A3B8" letter-spacing="0.3">multi-cloud scheduler</text>
+</svg>

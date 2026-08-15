@@ -1,6 +1,6 @@
 # Gpi 架构设计文档
 
-- **文档版本**：v62（2026-08-15）
+- **文档版本**：v67（2026-08-15）
 - **module**：`github.com/acmestack/gpi`
 - **CLI**：`gpi`（二进制 `cmd/gpi`）
 - **目标**：参考 SkyPilot 模式，用 Go 重写实现多云算力调度（multi-cloud compute scheduling），对标 SkyPilot 的 launcher / optimizer / SkyServe / Sky Jobs / API server。
@@ -22,153 +22,7 @@
 
 ## 2. 架构总览
 
-```mermaid
-%%{init: {"theme": "base", "themeVariables": {
-  "background": "#0d1117",
-  "primaryColor": "#161b22",
-  "primaryTextColor": "#e6edf3",
-  "primaryBorderColor": "#30363d",
-  "lineColor": "#58a6ff",
-  "fontSize": "14px"
-}}}%%
-flowchart LR
-    subgraph UI["👤 接入层"]
-        cli["🖥️ gpi CLI"]
-        api["🌐 gpi server REST API"]
-        jobsUI["⏰ jobs 定时调度"]
-    end
-
-    subgraph CORE["⚙️ 控制面"]
-        task["📄 task: YAML → Task/Resources"]
-        opt["🧮 optimizer: 资源匹配 + 比价（可插拔）"]
-        cat["📚 cloud/catalog 契约 + metacache 缓存"]
-        backendM["🚀 backend.Manager"]
-        prov["🔧 provisioner: 置备 + setup/run"]
-        serveM["📡 serve: 多副本服务"]
-        jobsM["🗓️ jobs: cron + 重试"]
-    end
-
-    subgraph EXEC["🧩 执行后端"]
-        cloudB["☁️ cloud: 云 VM"]
-        existingB["🔌 existing: 挂已有主机"]
-        dockerB["🐳 docker: 本地容器"]
-        localB["💻 local: 本机直跑"]
-    end
-
-    subgraph CLOUD["🌩️ 云 Provider"]
-        aliyun["aliyun: ECS/VPC/SG"]
-        aws["aws: EC2/VPC/SG"]
-        node["🖥️ 节点: Ray + gpilet"]
-    end
-
-    subgraph STATE["🗄️ 持久化 state.Backend"]
-        file["📁 file JSON"]
-        sqlite["🗃️ sqlite"]
-        mysql["🐬 mysql"]
-        redis["🧰 redis"]
-    end
-
-    subgraph SERVER["🔐 横切能力"]
-        mw["🧰 Middleware"]
-        openapi["📖 OpenAPI/Swagger"]
-        token["🎟️ token 认证"]
-        logging["📜 logging: 结构化日志 + CLI 输出"]
-    end
-
-    cli --> task
-    cli --> backendM
-    api --> backendM
-    jobsUI --> jobsM
-    jobsM --> backendM
-    serveM --> backendM
-    task --> opt
-    opt --> cat
-    opt --> backendM
-    backendM --> cloudB
-    backendM --> existingB
-    backendM --> dockerB
-    backendM --> localB
-    cloudB --> prov
-    prov --> aliyun
-    prov --> aws
-    aliyun --> node
-    aws --> node
-    prov --> state
-    backendM --> state
-    state --> file
-    state --> sqlite
-    state --> mysql
-    state --> redis
-    api --> mw
-    api --> openapi
-    api --> token
-    mw --> backendM
-    cli --> logging
-    api --> logging
-    classDef ui fill:#1f6feb,stroke:#79c0ff,color:#fff,stroke-width:2px;
-    classDef core fill:#238636,stroke:#56d364,color:#fff,stroke-width:2px;
-    classDef exec fill:#8957e5,stroke:#b083f0,color:#fff,stroke-width:2px;
-    classDef cloud fill:#bc4c00,stroke:#f0883e,color:#fff,stroke-width:2px;
-    classDef state fill:#6e7681,stroke:#8b949e,color:#fff,stroke-width:2px;
-    classDef srv fill:#bf8700,stroke:#d29922,color:#fff,stroke-width:2px;
-    class cli,api,jobsUI ui;
-    class task,opt,cat,backendM,prov,serveM,jobsM core;
-    class cloudB,existingB,dockerB,localB exec;
-    class aliyun,aws,node cloud;
-    class file,sqlite,mysql,redis state;
-    class mw,openapi,token,logging srv;
-```
-
-## 2.1 分层视图
-
-```mermaid
-%%{init: {"theme": "base", "themeVariables": {
-  "primaryColor": "#161b22",
-  "primaryTextColor": "#e6edf3",
-  "primaryBorderColor": "#30363d",
-  "lineColor": "#58a6ff"
-}}}%%
-flowchart TB
-    subgraph L["📱 接入层"]
-        A1["CLI (gpi)"] & A2["REST API"] & A3["jobs scheduler"]
-    end
-    subgraph M["⚙️ 控制面"]
-        B1["task → optimizer → backend.Manager → provisioner / serve / jobs"]
-    end
-    subgraph E["🧩 执行后端"]
-        C1["cloud / existing / docker / local"]
-    end
-    subgraph P["🌩️ 云层"]
-        D1["aliyun / aws Provider"]
-        D2["节点: Ray + gpilet"]
-    end
-    subgraph S["🗄️ 持久化"]
-        F1["state.Backend: file / sqlite / mysql / redis"]
-    end
-    subgraph X["🔐 横切能力"]
-        G1["Middleware / OpenAPI / 认证 / Request ID"]
-        G2["logging: 结构化日志 + CLI 输出"]
-    end
-
-    L --> M
-    M --> E
-    E --> P
-    M --> S
-    L --> X
-
-    classDef layer fill:#1f6feb,stroke:#79c0ff,color:#fff;
-    classDef control fill:#238636,stroke:#56d364,color:#fff;
-    classDef exec fill:#8957e5,stroke:#b083f0,color:#fff;
-    classDef prov fill:#bc4c00,stroke:#f0883e,color:#fff;
-    classDef store fill:#6e7681,stroke:#8b949e,color:#fff;
-    classDef cross fill:#bf8700,stroke:#d29922,color:#fff;
-    class A1,A2,A3 layer;
-    class B1 control;
-    class C1 exec;
-    class D1,D2 prov;
-    class F1 store;
-    class G1,G2 cross;
-```
+![架构总览](gpi-architecture-overview.svg)
 
 ## 3. 包结构
 
@@ -593,6 +447,9 @@ gpi serve（internal/serve）—— 负责真的去云上拉起副本、记录 S
 
 ## 版本记录
 
+- **v67（2026-08-15）**：架构图精修——移除 Rate Limiting（gpi 不支持）；执行后端节点放大适配容器比例；云层丰富（aliyun ECS / aws EC2 / gcp(计划) / azure(计划) / 更多...，底层补 VPC/SG/Subnet/Spot/Pricing 信息节点）；新增节点层（Ray 集群 + gpilet agent）；扩展能力改为右侧纵栏；颜色对比增强（容器浅底色+子模块深色）。文档升版 v67。
+- **v65（2026-08-15）**：架构图从 mermaid 替换为 SVG——overview 改为分层带状布局（消除线交叉），模块分色、圆角细线、容器完整包含所有节点；新增扩展能力区（接入新云/扩展 Optimizer/自定义 Encoder）；横切能力紧跟接入层 REST API 右侧；英文版全部翻译。文档升版 v65。
+- **v63（2026-08-15）**：架构图从 mermaid 替换为 SVG（透明背景、模块分色、圆角细线、紧凑对齐），提升渲染一致性与视觉质量；同步中英文版。文档升版 v63。
 - **v62（2026-08-15）**：架构总览图与分层视图补充 logging 横切能力节点（结构化日志 + CLI 输出双通道）；包结构新增 `internal/logging`；修复根 README 指向 `examples/`、`openapi.json`、`deploy/k8s/README.md`、`LICENSE` 的错误 `../` 前缀。文档升版 v62。
 - **v61（2026-08-13）**：examples/json 命名改为 `{scene}-obj.json`（Task 结构体形式）/`{scene}-yamlstr.json`（YAML 字符串形式）；删除死字段 `Task.Time`（无业务消费，运行时估算用 `Resources.TimeSec`），同步 swagger/openapi。文档升版 v61。
 - **v60（2026-08-13）**：task 包拆分——`Credentials` 独立 `credentials.go`、子规格（SSHTarget/DockerSpec/ServiceSpec）独立 `spec.go`，`task.go` 只留 Task 与解析方法；Task 每字段加注释、可选字段补 omitempty。`Range.MarshalJSON` 输出紧凑字符串（`"8+"`/`"4-8"`），JSON 请求体友好。examples 拆为 `examples/yaml/`（任务文件）+ `examples/json/`（API 请求体）。swagger Task schema 补可选字段说明 + SSHTarget/DockerSpec/ServiceSpec 子 schema。文档升版 v60。

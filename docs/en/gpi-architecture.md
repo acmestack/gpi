@@ -1,6 +1,6 @@
 # Gpi Architecture Design Document
 
-- **Doc version**: v62 (2026-08-15)
+- **Doc version**: v67 (2026-08-15)
 - **module**: `github.com/acmestack/gpi`
 - **CLI**: `gpi` (binary `cmd/gpi`)
 - **Goal**: Following the SkyPilot model, rewrite multi-cloud compute scheduling in Go, matching SkyPilot's launcher / optimizer / SkyServe / Sky Jobs / API server.
@@ -22,154 +22,7 @@
 
 ## 2. Architecture overview
 
-```mermaid
-%%{init: {"theme": "base", "themeVariables": {
-  "background": "#0d1117",
-  "primaryColor": "#161b22",
-  "primaryTextColor": "#e6edf3",
-  "primaryBorderColor": "#30363d",
-  "lineColor": "#58a6ff",
-  "fontSize": "14px"
-}}}%%
-flowchart LR
-    subgraph UI["👤 Access Layer"]
-        cli["🖥️ gpi CLI"]
-        api["🌐 gpi server REST API"]
-        jobsUI["⏰ jobs scheduled dispatch"]
-    end
-
-    subgraph CORE["⚙️ Control plane"]
-        task["📄 task: YAML → Task/Resources"]
-        opt["🧮 optimizer: resource match + price comparison (pluggable)"]
-        cat["📚 cloud/catalog contract + metacache cache"]
-        backendM["🚀 backend.Manager"]
-        prov["🔧 provisioner: provision + setup/run"]
-        serveM["📡 serve: multi-replica service"]
-        jobsM["🗓️ jobs: cron + retry"]
-    end
-
-    subgraph EXEC["🧩 Execution backends"]
-        cloudB["☁️ cloud: cloud VM"]
-        existingB["🔌 existing: attach existing hosts"]
-        dockerB["🐳 docker: local containers"]
-        localB["💻 local: run directly on this machine"]
-    end
-
-    subgraph CLOUD["🌩️ Cloud Providers"]
-        aliyun["aliyun: ECS/VPC/SG"]
-        aws["aws: EC2/VPC/SG"]
-        node["🖥️ Node: Ray + gpilet"]
-    end
-
-    subgraph STATE["🗄️ Persistent state.Backend"]
-        file["📁 file JSON"]
-        sqlite["🗃️ sqlite"]
-        mysql["🐬 mysql"]
-        redis["🧰 redis"]
-    end
-
-    subgraph SERVER["🔐 Cross-cutting capabilities"]
-        mw["🧰 Middleware"]
-        openapi["📖 OpenAPI/Swagger"]
-        token["🎟️ token auth"]
-        logging["📜 logging: structured logs + CLI output"]
-    end
-
-    cli --> task
-    cli --> backendM
-    api --> backendM
-    jobsUI --> jobsM
-    jobsM --> backendM
-    serveM --> backendM
-    task --> opt
-    opt --> cat
-    opt --> backendM
-    backendM --> cloudB
-    backendM --> existingB
-    backendM --> dockerB
-    backendM --> localB
-    cloudB --> prov
-    prov --> aliyun
-    prov --> aws
-    aliyun --> node
-    aws --> node
-    prov --> state
-    backendM --> state
-    state --> file
-    state --> sqlite
-    state --> mysql
-    state --> redis
-    api --> mw
-    api --> openapi
-    api --> token
-    mw --> backendM
-    cli --> logging
-    api --> logging
-
-    classDef ui fill:#1f6feb,stroke:#79c0ff,color:#fff,stroke-width:2px;
-    classDef core fill:#238636,stroke:#56d364,color:#fff,stroke-width:2px;
-    classDef exec fill:#8957e5,stroke:#b083f0,color:#fff,stroke-width:2px;
-    classDef cloud fill:#bc4c00,stroke:#f0883e,color:#fff,stroke-width:2px;
-    classDef state fill:#6e7681,stroke:#8b949e,color:#fff,stroke-width:2px;
-    classDef srv fill:#bf8700,stroke:#d29922,color:#fff,stroke-width:2px;
-    class cli,api,jobsUI ui;
-    class task,opt,cat,backendM,prov,serveM,jobsM core;
-    class cloudB,existingB,dockerB,localB exec;
-    class aliyun,aws,node cloud;
-    class file,sqlite,mysql,redis state;
-    class mw,openapi,token,logging srv;
-```
-
-## 2.1 Layered view
-
-```mermaid
-%%{init: {"theme": "base", "themeVariables": {
-  "primaryColor": "#161b22",
-  "primaryTextColor": "#e6edf3",
-  "primaryBorderColor": "#30363d",
-  "lineColor": "#58a6ff"
-}}}%%
-flowchart TB
-    subgraph L["📱 Access layer"]
-        A1["CLI (gpi)"] & A2["REST API"] & A3["jobs scheduler"]
-    end
-    subgraph M["⚙️ Control plane"]
-        B1["task → optimizer → backend.Manager → provisioner / serve / jobs"]
-    end
-    subgraph E["🧩 Execution backends"]
-        C1["cloud / existing / docker / local"]
-    end
-    subgraph P["🌩️ Cloud layer"]
-        D1["aliyun / aws Provider"]
-        D2["Node: Ray + gpilet"]
-    end
-    subgraph S["🗄️ Persistence"]
-        F1["state.Backend: file / sqlite / mysql / redis"]
-    end
-    subgraph X["🔐 Cross-cutting capabilities"]
-        G1["Middleware / OpenAPI / auth / Request ID"]
-        G2["logging: structured logs + CLI output"]
-    end
-
-    L --> M
-    M --> E
-    E --> P
-    M --> S
-    L --> X
-
-    classDef layer fill:#1f6feb,stroke:#79c0ff,color:#fff;
-    classDef control fill:#238636,stroke:#56d364,color:#fff;
-    classDef exec fill:#8957e5,stroke:#b083f0,color:#fff;
-    classDef prov fill:#bc4c00,stroke:#f0883e,color:#fff;
-    classDef store fill:#6e7681,stroke:#8b949e,color:#fff;
-    classDef cross fill:#bf8700,stroke:#d29922,color:#fff;
-    class A1,A2,A3 layer;
-    class B1 control;
-    class C1 exec;
-    class D1,D2 prov;
-    class F1 store;
-    class G1,G2 cross;
-```
+![Architecture Overview](gpi-architecture-overview.svg)
 
 ## 3. Package layout
 
@@ -594,6 +447,9 @@ The key naming style of response JSON is configurable, default **lower camelCase
 
 ## Version history
 
+- **v67 (2026-08-15)**: Architecture diagram refined — removed Rate Limiting (unsupported by gpi); enlarged execution backend nodes for proper container proportion; enriched Cloud layer (aliyun ECS / aws EC2 / gcp(planned) / azure(planned) / more..., plus VPC/SG/Subnet/Spot/Pricing info nodes); added Nodes layer (Ray cluster + gpilet agent); Extensibility moved to right sidebar; improved color contrast (light container + saturated child nodes). Doc bumped to v67.
+- **v65 (2026-08-15)**: Replaced mermaid with SVG — overview redesigned as layered horizontal bands (eliminates line crossings), module-specific colors, rounded corners with thin strokes, containers fully enclose all nodes; added Extensibility section (New Cloud / Custom Optimizer / Custom Encoder); Cross-cutting placed right after Access layer; English version fully translated. Doc bumped to v65.
+- **v63 (2026-08-15)**: Replaced mermaid diagrams with SVG (transparent background, module-specific colors, rounded corners with thin strokes, compact aligned layout) for consistent rendering and improved visual quality; synced zh/en. Doc bumped to v63.
 - **v62 (2026-08-15)**: Added the `logging` cross-cutting capability node to both the overview and layered-view diagrams (structured logs + CLI output dual channel); added `internal/logging` to the package layout; fixed the root README's incorrect `../` prefixes on links to `examples/`, `openapi.json`, `deploy/k8s/README.md`, `LICENSE`. Doc bumped to v62.
 - **v61 (2026-08-13)**: `examples/json` naming changed to `{scene}-obj.json` (Task struct form) / `{scene}-yamlstr.json` (YAML string form); removed the dead field `Task.Time` (no business consumer; runtime estimation uses `Resources.TimeSec`); synced swagger/openapi. Doc bumped to v61.
 - **v60 (2026-08-13)**: task package split — `Credentials` moved to its own `credentials.go`, sub-specs (SSHTarget/DockerSpec/ServiceSpec) to their own `spec.go`, leaving only Task and parsing methods in `task.go`; added comments to every Task field and `omitempty` to optional fields. `Range.MarshalJSON` now emits a compact string (`"8+"`/`"4-8"`), friendlier for JSON request bodies. examples split into `examples/yaml/` (task files) + `examples/json/` (API request bodies). swagger Task schema gained optional-field notes + SSHTarget/DockerSpec/ServiceSpec sub-schemas. Doc bumped to v60.
