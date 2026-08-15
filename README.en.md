@@ -114,7 +114,7 @@ export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=...
 # or ~/.aws/credentials
 ```
 
-You can also specify AK/SK dynamically per task in a `credentials:` block in the task YAML (see [examples/yaml/with-credentials.yaml](../examples/yaml/with-credentials.yaml)).
+You can also specify AK/SK dynamically per task in a `credentials:` block in the task YAML (see [examples/yaml/with-credentials.yaml](examples/yaml/with-credentials.yaml)).
 
 ## Commands
 
@@ -137,7 +137,7 @@ gpi server token create|list|revoke|rotate   API token management
 
 ### Multi-node Ray cluster
 
-When `num_nodes>1`, a head/worker Ray cluster is formed automatically (head `ray start --head`, workers join); setup runs in parallel on all nodes, and run executes on the head. Inside the task you can inject distributed parameters using `{{cluster.head_ip}}` and `{{cluster.num_workers}}`; see [examples/yaml/distributed-train.yaml](../examples/yaml/distributed-train.yaml).
+When `num_nodes>1`, a head/worker Ray cluster is formed automatically (head `ray start --head`, workers join); setup runs in parallel on all nodes, and run executes on the head. Inside the task you can inject distributed parameters using `{{cluster.head_ip}}` and `{{cluster.num_workers}}`; see [examples/yaml/distributed-train.yaml](examples/yaml/distributed-train.yaml).
 
 - Cloud instance tags: top-level `tags:` and `resources.labels:` are merged onto the cloud instance (`tags:` wins on conflict), and include the built-in `gpi:cluster`/`gpi:cloud` tags.
 - Ray node labels: in addition to being written to the cloud instance, `resources.labels:` are injected into every node via `ray start --labels`.
@@ -170,7 +170,7 @@ docker:
 backend: local       # run setup/run directly on the local machine
 ```
 
-Examples: [examples/yaml/existing-cluster.yaml](../examples/yaml/existing-cluster.yaml), [examples/yaml/docker-task.yaml](../examples/yaml/docker-task.yaml), [examples/yaml/local-task.yaml](../examples/yaml/local-task.yaml).
+Examples: [examples/yaml/existing-cluster.yaml](examples/yaml/existing-cluster.yaml), [examples/yaml/docker-task.yaml](examples/yaml/docker-task.yaml), [examples/yaml/local-task.yaml](examples/yaml/local-task.yaml).
 
 ### Persistence (pluggable backend)
 
@@ -208,7 +208,7 @@ GPI_STATE_BACKEND=redis GPI_STATE_REDIS_ADDR=localhost:6379
 - Response key style: camel by default, also snake / pascal (`--api-key-style`).
 - API authentication: `--require-auth` enables Bearer token auth; generate a token first with `gpi server token create` (requires one HTTP bootstrap), then send `Authorization: Bearer <token>`, with support for expiry/revocation/rotation (`gpi server token list|revoke|rotate`).
 - Extensible middleware: the `server.Middleware` interface + `AddMiddleware` for customization (auth/rate limiting/tracing, etc.); built-in security headers, CORS (`--enable-cors`), request-id, and logging middleware.
-- OpenAPI/Swagger: `--docs` enables `/swagger.json`, `/docs` (Swagger UI), and `/redoc`; the latest spec lives at the repo root in [openapi.json](../openapi.json) (rendered online by GitLab).
+- OpenAPI/Swagger: `--docs` enables `/swagger.json`, `/docs` (Swagger UI), and `/redoc`; the latest spec lives at the repo root in [openapi.json](openapi.json) (rendered online by GitLab).
 
 ### Deploying to Kubernetes
 
@@ -219,22 +219,22 @@ kubectl apply -k deploy/k8s
 kubectl -n gpi port-forward svc/gpi 8080:8080
 ```
 
-See [deploy/k8s/README.md](../deploy/k8s/README.md) for details. Images are built by the Release workflow and pushed to `ghcr.io/acmestack/gpi`.
+See [deploy/k8s/README.md](deploy/k8s/README.md) for details. Images are built by the Release workflow and pushed to `ghcr.io/acmestack/gpi`.
 
 ## Examples
 
 Task YAMLs (`examples/yaml/`, hand-written task files) with their matching HTTP API request bodies (`examples/json/`, where `{scene}-launch.json` is the YAML-string form for `/clusters/{name}/launch` and `{scene}-task.json` is the Task-struct form for `/tasks/{name}/launch`):
 
-- [examples/yaml/train.yaml](../examples/yaml/train.yaml) — single-node training · [obj.json](../examples/json/train-obj.json) · [yamlstr.json](../examples/json/train-yamlstr.json)
-- [examples/yaml/aws-train.yaml](../examples/yaml/aws-train.yaml) — targeting AWS
-- [examples/yaml/ordered-failover.yaml](../examples/yaml/ordered-failover.yaml) — `resources.ordered` sequential failover (AWS → Alibaba Cloud)
-- [examples/yaml/distributed-train.yaml](../examples/yaml/distributed-train.yaml) — multi-node Ray distributed training
-- [examples/yaml/llm-service.yaml](../examples/yaml/llm-service.yaml) — LLM serving deployment
-- [examples/yaml/nightly-benchmark.yaml](../examples/yaml/nightly-benchmark.yaml) — scheduled job
-- [examples/yaml/with-credentials.yaml](../examples/yaml/with-credentials.yaml) — dynamic AK/SK
-- [examples/yaml/existing-cluster.yaml](../examples/yaml/existing-cluster.yaml) — attach to an existing host
-- [examples/yaml/docker-task.yaml](../examples/yaml/docker-task.yaml) — run in Docker
-- [examples/yaml/local-task.yaml](../examples/yaml/local-task.yaml) — run directly on the local machine
+- [examples/yaml/train.yaml](examples/yaml/train.yaml) — single-node training · [obj.json](examples/json/train-obj.json) · [yamlstr.json](examples/json/train-yamlstr.json)
+- [examples/yaml/aws-train.yaml](examples/yaml/aws-train.yaml) — targeting AWS
+- [examples/yaml/ordered-failover.yaml](examples/yaml/ordered-failover.yaml) — `resources.ordered` sequential failover (AWS → Alibaba Cloud)
+- [examples/yaml/distributed-train.yaml](examples/yaml/distributed-train.yaml) — multi-node Ray distributed training
+- [examples/yaml/llm-service.yaml](examples/yaml/llm-service.yaml) — LLM serving deployment
+- [examples/yaml/nightly-benchmark.yaml](examples/yaml/nightly-benchmark.yaml) — scheduled job
+- [examples/yaml/with-credentials.yaml](examples/yaml/with-credentials.yaml) — dynamic AK/SK
+- [examples/yaml/existing-cluster.yaml](examples/yaml/existing-cluster.yaml) — attach to an existing host
+- [examples/yaml/docker-task.yaml](examples/yaml/docker-task.yaml) — run in Docker
+- [examples/yaml/local-task.yaml](examples/yaml/local-task.yaml) — run directly on the local machine
 
 ## Learn more
 
@@ -250,4 +250,4 @@ Issues and PRs are welcome. See [CONTRIBUTING](docs/en/CONTRIBUTING.md).
 
 ## License
 
-[MIT](../LICENSE) © [AcmeStack](https://acmestack.com)
+[MIT](LICENSE) © [AcmeStack](https://acmestack.com)
