@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Gpi 多云算力调度器（"机排/鸡排"）（multi-cloud compute scheduling）</strong>
+  <strong>Gpi 多云算力调度器（"机排/鸡排"）</strong>
   <br/>
   <em>Manage all your AI compute</em>
 </p>

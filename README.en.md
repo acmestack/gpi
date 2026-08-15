@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Gpi multi-cloud compute scheduling</strong>
+  <strong>Gpi multi-cloud scheduler</strong>
   <br/>
   <em>Manage all your AI compute</em>
 </p>
