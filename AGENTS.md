@@ -9,6 +9,7 @@
   2. 第三方包（`github.com/spf13/cobra`、`go.uber.org/zap` 等）；
   3. 项目内部包（`github.com/acmestack/gpi/...`）。
   统一用 `goimports -local github.com/acmestack/gpi -w <file>` 自动分组（工具已装在 `~/go/bin/goimports`）。不要手动把第三方和内部包混在一组。
+- **生成/新增 Go 文件后必须格式化**：每次生成或新增 `.go` 文件后，立即运行 `gofmt -w <file>` 或 `goimports -local github.com/acmestack/gpi -w <file>` 格式化，确保缩进、空行、import 分组符合规范。
 - **日志约定（`internal/logging`）**：
   - 后台/守护诊断日志用 `logging.Get()` 返回的 `*logging.Logger`，级别方法直接传 key/value 对，例如 `Log.Info("launching cluster", "cluster", name, "nodes", n)`；**不要**写 `zap.String("cluster", name)` 这类字段构造。
   - CLI 面向用户的命令输出（表格、确认提示、流式进度、结果摘要）用 `logging.CLIPrintf` / `logging.CLIPrintln`，写 stdout，**不经过日志文件**；不要用 `fmt.Print*` 直出，也不要改成 `logging.Get()`。
