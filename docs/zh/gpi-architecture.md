@@ -1,6 +1,6 @@
 # Gpi 架构设计文档
 
-- **文档版本**：v61（2026-08-13）
+- **文档版本**：v62（2026-08-15）
 - **module**：`github.com/acmestack/gpi`
 - **CLI**：`gpi`（二进制 `cmd/gpi`）
 - **目标**：参考 SkyPilot 模式，用 Go 重写实现多云算力调度（multi-cloud compute scheduling），对标 SkyPilot 的 launcher / optimizer / SkyServe / Sky Jobs / API server。
@@ -68,10 +68,11 @@ flowchart LR
         redis["🧰 redis"]
     end
 
-    subgraph SERVER["🔐 API 能力"]
+    subgraph SERVER["🔐 横切能力"]
         mw["🧰 Middleware"]
         openapi["📖 OpenAPI/Swagger"]
         token["🎟️ token 认证"]
+        logging["📜 logging: 结构化日志 + CLI 输出"]
     end
 
     cli --> task
@@ -102,7 +103,8 @@ flowchart LR
     api --> openapi
     api --> token
     mw --> backendM
-
+    cli --> logging
+    api --> logging
     classDef ui fill:#1f6feb,stroke:#79c0ff,color:#fff,stroke-width:2px;
     classDef core fill:#238636,stroke:#56d364,color:#fff,stroke-width:2px;
     classDef exec fill:#8957e5,stroke:#b083f0,color:#fff,stroke-width:2px;
@@ -114,7 +116,7 @@ flowchart LR
     class cloudB,existingB,dockerB,localB exec;
     class aliyun,aws,node cloud;
     class file,sqlite,mysql,redis state;
-    class mw,openapi,token srv;
+    class mw,openapi,token,logging srv;
 ```
 
 ## 2.1 分层视图
@@ -145,6 +147,7 @@ flowchart TB
     end
     subgraph X["🔐 横切能力"]
         G1["Middleware / OpenAPI / 认证 / Request ID"]
+        G2["logging: 结构化日志 + CLI 输出"]
     end
 
     L --> M
@@ -164,7 +167,7 @@ flowchart TB
     class C1 exec;
     class D1,D2 prov;
     class F1 store;
-    class G1 cross;
+    class G1,G2 cross;
 ```
 
 ## 3. 包结构
@@ -187,6 +190,7 @@ internal/
   serve/                    # 多副本服务 + 端点（SkyServe 等价）
   jobs/                     # 任务注册、重试、cron 解析、调度
   server/                   # REST API + 后台 scheduler + Middleware + OpenAPI
+  logging/                  # 结构化日志（zap）双通道：诊断日志 + CLI 输出
   cli/                      # cobra 命令
 ```
 
@@ -589,6 +593,7 @@ gpi serve（internal/serve）—— 负责真的去云上拉起副本、记录 S
 
 ## 版本记录
 
+- **v62（2026-08-15）**：架构总览图与分层视图补充 logging 横切能力节点（结构化日志 + CLI 输出双通道）；包结构新增 `internal/logging`；修复根 README 指向 `examples/`、`openapi.json`、`deploy/k8s/README.md`、`LICENSE` 的错误 `../` 前缀。文档升版 v62。
 - **v61（2026-08-13）**：examples/json 命名改为 `{scene}-obj.json`（Task 结构体形式）/`{scene}-yamlstr.json`（YAML 字符串形式）；删除死字段 `Task.Time`（无业务消费，运行时估算用 `Resources.TimeSec`），同步 swagger/openapi。文档升版 v61。
 - **v60（2026-08-13）**：task 包拆分——`Credentials` 独立 `credentials.go`、子规格（SSHTarget/DockerSpec/ServiceSpec）独立 `spec.go`，`task.go` 只留 Task 与解析方法；Task 每字段加注释、可选字段补 omitempty。`Range.MarshalJSON` 输出紧凑字符串（`"8+"`/`"4-8"`），JSON 请求体友好。examples 拆为 `examples/yaml/`（任务文件）+ `examples/json/`（API 请求体）。swagger Task schema 补可选字段说明 + SSHTarget/DockerSpec/ServiceSpec 子 schema。文档升版 v60。
 - **v59（2026-08-13）**：task 包 json tag 统一**小驼峰**（`num_nodes`→`numNodes` 等，yaml 保持 snake）；server API DTO（launch/taskLaunch）json tag 同步 camel 对齐 swagger；`Credentials` 加 omitempty。`/tasks/{name}/launch` 请求体字段改 camel。文档升版 v59。

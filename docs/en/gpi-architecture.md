@@ -1,6 +1,6 @@
 # Gpi Architecture Design Document
 
-- **Doc version**: v61 (2026-08-13)
+- **Doc version**: v62 (2026-08-15)
 - **module**: `github.com/acmestack/gpi`
 - **CLI**: `gpi` (binary `cmd/gpi`)
 - **Goal**: Following the SkyPilot model, rewrite multi-cloud compute scheduling in Go, matching SkyPilot's launcher / optimizer / SkyServe / Sky Jobs / API server.
@@ -68,10 +68,11 @@ flowchart LR
         redis["🧰 redis"]
     end
 
-    subgraph SERVER["🔐 API capabilities"]
+    subgraph SERVER["🔐 Cross-cutting capabilities"]
         mw["🧰 Middleware"]
         openapi["📖 OpenAPI/Swagger"]
         token["🎟️ token auth"]
+        logging["📜 logging: structured logs + CLI output"]
     end
 
     cli --> task
@@ -102,6 +103,8 @@ flowchart LR
     api --> openapi
     api --> token
     mw --> backendM
+    cli --> logging
+    api --> logging
 
     classDef ui fill:#1f6feb,stroke:#79c0ff,color:#fff,stroke-width:2px;
     classDef core fill:#238636,stroke:#56d364,color:#fff,stroke-width:2px;
@@ -114,7 +117,7 @@ flowchart LR
     class cloudB,existingB,dockerB,localB exec;
     class aliyun,aws,node cloud;
     class file,sqlite,mysql,redis state;
-    class mw,openapi,token srv;
+    class mw,openapi,token,logging srv;
 ```
 
 ## 2.1 Layered view
@@ -145,6 +148,7 @@ flowchart TB
     end
     subgraph X["🔐 Cross-cutting capabilities"]
         G1["Middleware / OpenAPI / auth / Request ID"]
+        G2["logging: structured logs + CLI output"]
     end
 
     L --> M
@@ -164,7 +168,7 @@ flowchart TB
     class C1 exec;
     class D1,D2 prov;
     class F1 store;
-    class G1 cross;
+    class G1,G2 cross;
 ```
 
 ## 3. Package layout
@@ -187,6 +191,7 @@ internal/
   serve/                    # Multi-replica service + endpoints (SkyServe equivalent)
   jobs/                     # Task registration, retry, cron parsing, scheduling
   server/                   # REST API + background scheduler + Middleware + OpenAPI
+  logging/                  # structured logging (zap) dual-channel: diagnostic logs + CLI output
   cli/                      # cobra commands
 ```
 
@@ -589,6 +594,7 @@ The key naming style of response JSON is configurable, default **lower camelCase
 
 ## Version history
 
+- **v62 (2026-08-15)**: Added the `logging` cross-cutting capability node to both the overview and layered-view diagrams (structured logs + CLI output dual channel); added `internal/logging` to the package layout; fixed the root README's incorrect `../` prefixes on links to `examples/`, `openapi.json`, `deploy/k8s/README.md`, `LICENSE`. Doc bumped to v62.
 - **v61 (2026-08-13)**: `examples/json` naming changed to `{scene}-obj.json` (Task struct form) / `{scene}-yamlstr.json` (YAML string form); removed the dead field `Task.Time` (no business consumer; runtime estimation uses `Resources.TimeSec`); synced swagger/openapi. Doc bumped to v61.
 - **v60 (2026-08-13)**: task package split — `Credentials` moved to its own `credentials.go`, sub-specs (SSHTarget/DockerSpec/ServiceSpec) to their own `spec.go`, leaving only Task and parsing methods in `task.go`; added comments to every Task field and `omitempty` to optional fields. `Range.MarshalJSON` now emits a compact string (`"8+"`/`"4-8"`), friendlier for JSON request bodies. examples split into `examples/yaml/` (task files) + `examples/json/` (API request bodies). swagger Task schema gained optional-field notes + SSHTarget/DockerSpec/ServiceSpec sub-schemas. Doc bumped to v60.
 - **v59 (2026-08-13)**: task package json tags unified to **lower camelCase** (`num_nodes`→`numNodes`, etc.; yaml stays snake_case); server API DTOs (launch/taskLaunch) json tags aligned to camel to match swagger; `Credentials` gained `omitempty`. `/tasks/{name}/launch` request-body fields changed to camel. Doc bumped to v59.

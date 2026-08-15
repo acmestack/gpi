@@ -114,7 +114,7 @@ export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=...
 # 或 ~/.aws/credentials
 ```
 
-也可以在任务 YAML 的 `credentials:` 分块中为每次任务动态指定 AK/SK（见 [examples/yaml/with-credentials.yaml](../examples/yaml/with-credentials.yaml)）。
+也可以在任务 YAML 的 `credentials:` 分块中为每次任务动态指定 AK/SK（见 [examples/yaml/with-credentials.yaml](examples/yaml/with-credentials.yaml)）。
 
 ## Commands
 
@@ -137,7 +137,7 @@ gpi server token create|list|revoke|rotate   API 令牌管理
 
 ### 多节点 Ray 集群
 
-`num_nodes>1` 时自动组成 head/worker Ray 集群（head `ray start --head`，worker 加入）；setup 在全部节点并行执行，run 在 head 执行。任务内可用 `{{cluster.head_ip}}` 与 `{{cluster.num_workers}}` 注入分布式参数，见 [examples/yaml/distributed-train.yaml](../examples/yaml/distributed-train.yaml)。
+`num_nodes>1` 时自动组成 head/worker Ray 集群（head `ray start --head`，worker 加入）；setup 在全部节点并行执行，run 在 head 执行。任务内可用 `{{cluster.head_ip}}` 与 `{{cluster.num_workers}}` 注入分布式参数，见 [examples/yaml/distributed-train.yaml](examples/yaml/distributed-train.yaml)。
 
 - 云实例标签：顶层 `tags:` 与 `resources.labels:` 合并写入云实例（冲突时 `tags:` 优先），并含内置 `gpi:cluster`/`gpi:cloud`。
 - Ray node labels：`resources.labels:` 除写云实例外，还作为 `ray start --labels` 注入所有节点。
@@ -170,7 +170,7 @@ docker:
 backend: local       # 本机直接执行 setup/run
 ```
 
-示例：[examples/yaml/existing-cluster.yaml](../examples/yaml/existing-cluster.yaml)、[examples/yaml/docker-task.yaml](../examples/yaml/docker-task.yaml)、[examples/yaml/local-task.yaml](../examples/yaml/local-task.yaml)。
+示例：[examples/yaml/existing-cluster.yaml](examples/yaml/existing-cluster.yaml)、[examples/yaml/docker-task.yaml](examples/yaml/docker-task.yaml)、[examples/yaml/local-task.yaml](examples/yaml/local-task.yaml)。
 
 ### 持久化（可插拔后端）
 
@@ -232,7 +232,7 @@ logging:
 - 响应 key 风格：默认 camel，可 snake / pascal（`--api-key-style`）。
 - API 认证：`--require-auth` 开启 Bearer 令牌认证；先 `gpi server token create` 生成令牌（需经 HTTP 引导一次），请求带 `Authorization: Bearer <token>`，支持过期/撤销/轮换（`gpi server token list|revoke|rotate`）。
 - Middleware 可扩展：`server.Middleware` 接口 + `AddMiddleware` 定制（认证/限流/追踪等）；内置安全头、CORS（`--enable-cors`）、request-id、日志中间件。
-- OpenAPI/Swagger：`--docs` 开启 `/swagger.json`、`/docs`（Swagger UI）、`/redoc`；最新规范在仓库根 [openapi.json](../openapi.json)（GitLab 内建在线渲染）。
+- OpenAPI/Swagger：`--docs` 开启 `/swagger.json`、`/docs`（Swagger UI）、`/redoc`；最新规范在仓库根 [openapi.json](openapi.json)（GitLab 内建在线渲染）。
 
 ### 部署到 Kubernetes
 
@@ -243,22 +243,22 @@ kubectl apply -k deploy/k8s
 kubectl -n gpi port-forward svc/gpi 8080:8080
 ```
 
-详见 [deploy/k8s/README.md](../deploy/k8s/README.md)。镜像由 Release workflow 构建推送到 `ghcr.io/acmestack/gpi`。
+详见 [deploy/k8s/README.md](deploy/k8s/README.md)。镜像由 Release workflow 构建推送到 `ghcr.io/acmestack/gpi`。
 
 ## Examples
 
 任务 YAML（`examples/yaml/`，手写任务文件）与对应的 HTTP API 请求体（`examples/json/`，`{scene}-launch.json` 用于 `/clusters/{name}/launch` 的 YAML 字符串形式、`{scene}-task.json` 用于 `/tasks/{name}/launch` 的 Task 结构体形式）：
 
-- [examples/yaml/train.yaml](../examples/yaml/train.yaml) — 单机训练 · [obj.json](../examples/json/train-obj.json) · [yamlstr.json](../examples/json/train-yamlstr.json)
-- [examples/yaml/aws-train.yaml](../examples/yaml/aws-train.yaml) — 指定 AWS
-- [examples/yaml/ordered-failover.yaml](../examples/yaml/ordered-failover.yaml) — resources.ordered 按序 failover（AWS → 阿里云）
-- [examples/yaml/distributed-train.yaml](../examples/yaml/distributed-train.yaml) — 多节点 Ray 分布式训练
-- [examples/yaml/llm-service.yaml](../examples/yaml/llm-service.yaml) — LLM 服务化部署
-- [examples/yaml/nightly-benchmark.yaml](../examples/yaml/nightly-benchmark.yaml) — 定时任务
-- [examples/yaml/with-credentials.yaml](../examples/yaml/with-credentials.yaml) — 动态 AK/SK
-- [examples/yaml/existing-cluster.yaml](../examples/yaml/existing-cluster.yaml) — 挂已有主机
-- [examples/yaml/docker-task.yaml](../examples/yaml/docker-task.yaml) — Docker 执行
-- [examples/yaml/local-task.yaml](../examples/yaml/local-task.yaml) — 本机直跑
+- [examples/yaml/train.yaml](examples/yaml/train.yaml) — 单机训练 · [obj.json](examples/json/train-obj.json) · [yamlstr.json](examples/json/train-yamlstr.json)
+- [examples/yaml/aws-train.yaml](examples/yaml/aws-train.yaml) — 指定 AWS
+- [examples/yaml/ordered-failover.yaml](examples/yaml/ordered-failover.yaml) — resources.ordered 按序 failover（AWS → 阿里云）
+- [examples/yaml/distributed-train.yaml](examples/yaml/distributed-train.yaml) — 多节点 Ray 分布式训练
+- [examples/yaml/llm-service.yaml](examples/yaml/llm-service.yaml) — LLM 服务化部署
+- [examples/yaml/nightly-benchmark.yaml](examples/yaml/nightly-benchmark.yaml) — 定时任务
+- [examples/yaml/with-credentials.yaml](examples/yaml/with-credentials.yaml) — 动态 AK/SK
+- [examples/yaml/existing-cluster.yaml](examples/yaml/existing-cluster.yaml) — 挂已有主机
+- [examples/yaml/docker-task.yaml](examples/yaml/docker-task.yaml) — Docker 执行
+- [examples/yaml/local-task.yaml](examples/yaml/local-task.yaml) — 本机直跑
 
 ## Learn more
 

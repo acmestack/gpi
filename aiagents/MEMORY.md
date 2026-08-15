@@ -1,8 +1,9 @@
 # Gpi 项目沟通记录（MEMORY）
 
-- **文档版本**：v23（2026-08-15）
+- **文档版本**：v24（2026-08-15）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v24（2026-08-15）**：新增 `upstream` remote（`acmestack/gpi`）并修复分支基线（本地 main 曾落后上游 1 提交致 PR 冲突，教训：切新分支前先 `git fetch upstream && git reset --hard upstream/main`）；新增分支 `fix-docs-links`——修复根 README 指向 `examples/`、`openapi.json`、`deploy/k8s/README.md`、`LICENSE` 的错误 `../` 前缀（仓库根资源直接用文件名）；架构文档 v61→v62，两张 mermaid 图补 logging 横切能力节点 + 包结构新增 `internal/logging`，中英同步。
 - **v23（2026-08-15）**：补录 logging 体系完整决策（包级 WithName logger、CLIPrintf 通道、补充 cloud/backend/optimizer 关键日志）+ server middleware 拆分文件。
 - **v22（2026-08-14）**：补录文档双语化——`docs/zh/` 与 `docs/en/` 两套目录；随后用户调整：**README 放仓库根**（`README.md` 中文 + `README.en.md` 英文，互相语言切换），`docs/zh|en` 各含其余 5 个文档；`deploy/k8s/README.md` 等代码配套说明保持单语原位；**`.github/CLA.md` 与 `.github/RELEASE_NOTES.md` 同文件逐句双语（每句中文后紧跟对应英文）**。
 - **v21（2026-08-13）**：补录 CLA workflow 修复 + 清理 useSpot 死参数。
@@ -240,6 +241,14 @@
 - **决策**：CLA assistant 用 `contributor-assistant/github-action@v2.6.1`（维护中版本，替代已归档的 `cla-assistant/github-action@v2.1.3-beta`）；签名存同一仓库 `branch: cla`（acmestack/gpi，分支不可保护）；**不设 remote-org/repo**（避免 PAT 401）；`permissions` 需完整（actions/contents/pull-requests/statuses write）；`lock-pullrequest-aftermerge: false`；PR 模板**删除 CLA 段落**（避免与 bot 冲突）。
 - **决策**：`attachPrices`/`collectAndPrice` 的 `useSpot` 参数为**死参数**（attachPrices 总是同时拉 on-demand+spot 两份价格），已从签名与调用处移除。useSpot 真正生效点：`rankPlan` → `Metric.Rank(c, useSpot)`（cost.go 的 `CostPerHour(useSpot)`）→ `Launch.UseSpot` → provisioner。
 - **决策**：全部提交 GPG 签名（`user.signingkey=EE2178E827265FD0`，commit/tag 用 `-S`）。
+
+### 2026-08-15（README 链接修复 · 架构图补 logging）
+
+- **背景**：用户发现根 README 有文件链接不对，并询问架构图是否需要更新。
+- **决策**：扫描全部 markdown 链接（README/README.en/docs/zh/docs/en/deploy k8s/AGENTS）——根 README 在仓库根，指向仓库根资源（`examples/`、`openapi.json`、`deploy/k8s/README.md`、`LICENSE`）直接用文件名，**不能加 `../`**（此前错误加了 `../`，链接指向仓库外）。修复后 0 broken 链接。
+- **决策**：架构文档 v61→v62——架构总览图 & 分层视图的横切能力层补 `logging` 节点（结构化日志 + CLI 输出双通道），`SERVER` 子图更名「横切能力」，包结构新增 `internal/logging`；中英同步，版本记录补 v62。
+- **工作流教训**：PR 冲突根因是切分支前未同步上游——本地 main 落后上游 `acmestack/gpi` 1 提交（双语化）。已新增 `upstream` remote，此后切新分支前先 `git fetch upstream && git checkout main && git reset --hard upstream/main`。
+- **涉及文件**：`README.md`、`README.en.md`、`docs/zh|en/gpi-architecture.md`（v62）、`aiagents/MEMORY.md`（v24）。分支 `fix-docs-links`。
 
 ### 2026-08-15（logging 体系定稿 · server middleware 拆分）
 
