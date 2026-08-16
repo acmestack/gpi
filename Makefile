@@ -1,4 +1,4 @@
-.PHONY: all gpi gpilet build generate openapi test vet docker clean
+.PHONY: all gpi gpilet build generate openapi test e2e vet docker clean
 
 all: build
 
@@ -22,6 +22,11 @@ gpilet:
 
 test:
 	go test ./...
+
+# Run Kubernetes e2e tests against a real cluster (KUBECONFIG must point to
+# a running cluster, e.g. kind). Excluded from `make test` via the e2e tag.
+e2e:
+	go test -tags e2e -count=1 -v ./internal/cloud/kubernetes/
 
 vet:
 	go vet ./...

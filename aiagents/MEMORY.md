@@ -3,6 +3,7 @@
 - **文档版本**：v27（2026-08-15）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v29（2026-08-16）**：Kubernetes e2e 测试基础设施——`e2e_test.go`（build tag e2e，真实 kind 集群生命周期测试）+ `make e2e` + `.github/workflows/e2e.yml`（kind + 3 个 k8s 版本矩阵 v1.36.1/v1.35.5/v1.34.8，PR 强制门槛）。覆盖率检查本次暂缓。
 - **v28（2026-08-16）**：GCP/Azure/Kubernetes cloud Provider 实现；v0.0.1 发布 + tag 推送；v0.0.2 开发准备（VERSION + buildinfo bump）；release.yml fork 保护（注释化）；AGENTS.md 新增 provider.go/client.go 文件结构规则、发布后流程、新特性/Bug 开发流程。
 - **v27（2026-08-15）**：架构图 v65→v67——移除 Rate Limiting；执行后端节点放大；云层丰富（aliyun ECS / aws EC2 / gcp+azure 计划 / 更多 + VPC/SG/Subnet/Spot/Pricing）；新增节点层（Ray+gpilet）；扩展能力改右侧纵栏；颜色对比增强。架构文档 v66→v67。
 - **v26（2026-08-15）**：架构图 v64→v65——overview 从 LR 流程图改为分层带状布局（消除线交叉），横切能力紧跟 REST API 右侧，新增扩展能力区（接入新云/扩展 Optimizer/自定义 Encoder），容器尺寸修正（redis 不再溢出），英文版全部翻译；同时将架构图嵌入 README 中英文首页。
@@ -70,6 +71,15 @@
 
 - **决策**：用户明确新特性/新 bug 开发的标准流程——先回 main、`git fetch upstream && git reset --hard upstream/main`、`git push origin main --force-with-lease` 同步 fork，再基于最新 main 创建全新的 `feature/<name>`/`fix/<name>`/`docs/<name>` 分支，仅在该分支开发，完成后确认提交 push 提 PR。已写入 AGENTS.md「新特性/新 Bug 开发流程」。
 - **决策**：release.yml 的 `if: github.repository == 'acmestack/gpi'` 改为注释保留（fork 各自推 GHCR 不会覆盖，无需启用），并加注释说明。
+
+### 2026-08-16（Kubernetes e2e 测试基础设施）
+
+- **背景**：用户要求支持 Kubernetes e2e——PR 提交时在真实 k8s 上跑，作为**强制合入门槛**；本次先做 k8s，其他云后面补；覆盖率检查（<80% 不能合入）本次暂缓，仅记录需求。
+- **决策**：e2e 用 **kind 集群**在 GitHub workflow 中运行，覆盖 3 个主流 k8s 版本矩阵（v1.36.1 / v1.35.5 / v1.34.8，kind v0.32.0，kubectl 各版本对齐）。
+- **决策**：`internal/cloud/kubernetes/e2e_test.go` 用 `//go:build e2e` tag 隔离，`make e2e` 运行（`go test -tags e2e -count=1 -v ./internal/cloud/kubernetes/`），普通 `make test` 不跑 e2e。测试镜像用 kind 预置的 `registry.k8s.io/pause:3.9`（可靠、常驻 Running），可用 `GPI_E2E_IMAGE` 覆盖。
+- **e2e 覆盖**：单节点 Pod 全生命周期——RunInstances（Pending）→ 轮询 Running → ListInstances → DescribeInstances → GetPublicIP（pod IP 非空）→ TerminateInstances → 确认删除。
+- **新增文件**：`.github/workflows/e2e.yml`、`internal/cloud/kubernetes/e2e_test.go`；`Makefile` 加 `e2e` target；AGENTS.md 新增「测试与 CI」小节（PR 合入门槛）。
+- **发现既有问题**：`Provisioner.Down`（provisioner.go:592）用 `n.ID`（pod UID）调 `TerminateInstances`，但 k8s provider 的 `TerminateInstances` 期望 pod 名（注释"uid is actually the pod name"）——ID 语义不一致，后续需修复（e2e 当前直接传 pod 名规避）。
 
 ### 2026-08-08（立项 · v1 骨架）
 
@@ -334,6 +344,7 @@
 | License / CLA | MIT；AcmeStack CLA（`.github/CLA.md` + cla-assistant） |
 | 沟通记录 | 每次沟通后追加到 `aiagents/MEMORY.md` |
 | Workflow 保护 | release.yml 加 `if: github.repository == 'acmestack/gpi'` 防 fork 触发；仓库设置取消 "Run workflows from fork pull requests" |
+| K8s e2e | `.github/workflows/e2e.yml` kind 集群 × 3 版本矩阵（v1.36.1/v1.35.5/v1.34.8），PR 强制门槛；e2e 用 `//go:build e2e` tag + `make e2e` 隔离 |
 | 平台 | Linux/macOS；无 Windows |
 | 用户配置文件 | `$GPI_HOME/config.yaml`（默认 `~/.gpi/config.yaml`）+ 项目 `.gpi.yaml` 层叠（项目覆盖用户） |
 | 云专项配置 | 各云自己包内定义 `Config` struct + `LoadConfig()`（`config.Load().Section(CloudName, &c)`），`internal/config` 云无关、新云零改动 |

@@ -86,6 +86,14 @@
 3. **开发**：只在该分支上工作，不要直接改 main。
 4. **完成后**：展示 diff → 用户确认 → `git commit -S` → `git push origin <branch>` → 提 PR 合并到 upstream main。
 
+## 测试与 CI（Testing / CI）
+
+- **单元测试**：`make test`（`go test ./...`），不依赖外部资源，提交前必须全部通过。
+- **Kubernetes e2e 测试**：`internal/cloud/kubernetes/e2e_test.go` 用 `//go:build e2e` tag 隔离，`make e2e` 运行（需真实集群，如 kind，通过 `KUBECONFIG` 连接）。普通 `make test` 不跑 e2e。
+- **PR 合入门槛（E2E gate）**：`.github/workflows/e2e.yml` 在每个 PR 上用 **kind 集群跑 Kubernetes e2e**（当前覆盖 3 个主流 k8s 版本矩阵：v1.36.1 / v1.35.5 / v1.34.8）。**PR 必须通过全部 e2e job 才能合并**——这是强制门槛，不是可选项。
+- e2e 测试涉及真实云/集群的，都要走 workflow 而不是本地；本地跑不通的（无 kind/docker）以 CI 结果为准。
+- 涉及云 provider 的改动，除了单元测试，还应在 PR 里评估是否受 e2e 影响（新增 k8s 行为时补充对应 e2e 断言）。
+
 ## 版本发布（tag）
 
 - 版本号命名：语义化版本 `vMAJOR.MINOR.PATCH`（如 `v0.0.1`）。
