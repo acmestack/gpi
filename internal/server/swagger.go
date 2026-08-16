@@ -71,7 +71,7 @@ func swaggerSpec(prefix string) map[string]any {
 		"info": map[string]any{
 			"title":   "gpi API",
 			"version": buildinfo.Version,
-			"description": "gpi multi-cloud compute scheduling REST API. " +
+			"description": "gpi multi-cloud compute scheduler REST API. " +
 				"Authenticate with `Authorization: Bearer <token>` when the server runs with --require-auth.",
 		},
 		"tags": []any{

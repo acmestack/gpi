@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Gpi multi-cloud scheduler</strong>
+  <strong>Gpi multi-cloud compute scheduler</strong>
   <br/>
   <em>Manage all your AI compute</em>
 </p>
@@ -34,7 +34,7 @@ Gpi is a lightweight, multi-cloud, self-hostable compute scheduler. Declare your
 
 - **Tasks as code**: a single YAML declares resources / setup / run, runnable on any supported cloud.
 - **Price-driven scheduling**: performs resource matching and price comparison across all registered clouds and outputs the optimal placement plan.
-- **Multi-cloud provisioning**: supports aliyun + aws out of the box (zero official SDK; signatures implemented with the standard library).
+- **Multi-cloud provisioning**: supports aliyun, aws, gcp, azure, and kubernetes (zero official SDK for cloud providers; signatures implemented with the standard library).
 - **Serving**: multi-replica deployment with second-level scaling and built-in health checks.
 - **Scheduled jobs**: cron scheduling with automatic retry on failure.
 - **Multiple execution backends**: cloud VMs, attaching existing hosts, local Docker, and running directly on the local machine.

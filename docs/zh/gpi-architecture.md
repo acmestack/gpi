@@ -3,7 +3,7 @@
 - **文档版本**：v69（2026-08-15）
 - **module**：`github.com/acmestack/gpi`
 - **CLI**：`gpi`（二进制 `cmd/gpi`）
-- **目标**：参考 SkyPilot 模式，用 Go 重写实现多云算力调度（multi-cloud compute scheduling），对标 SkyPilot 的 launcher / optimizer / SkyServe / Sky Jobs / API server。
+- **目标**：参考 SkyPilot 模式，用 Go 重写实现多云算力调度（multi-cloud compute scheduler），对标 SkyPilot 的 launcher / optimizer / SkyServe / Sky Jobs / API server。
 
 ## 1. 定位
 

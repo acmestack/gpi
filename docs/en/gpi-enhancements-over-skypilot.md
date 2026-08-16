@@ -1,7 +1,7 @@
 # Gpi Capability Enhancements over SkyPilot
 
 - **Doc version**: v1 (2026-08-08)
-- **Scope**: Gpi follows the [SkyPilot](https://skypilot.readthedocs.io) model and implements multi-cloud compute scheduling in Go. This document specifically records the enhancements/differentiation that Gpi makes beyond the capabilities SkyPilot already has, for evaluation and evolution reference. The baseline capabilities (task YAML → Optimizer → Provisioner → setup/run, SkyServe, Sky Jobs, API server, etc.) are described in `gpi-architecture.md`.
+- **Scope**: Gpi follows the [SkyPilot](https://skypilot.readthedocs.io) model and implements multi-cloud compute scheduler in Go. This document specifically records the enhancements/differentiation that Gpi makes beyond the capabilities SkyPilot already has, for evaluation and evolution reference. The baseline capabilities (task YAML → Optimizer → Provisioner → setup/run, SkyServe, Sky Jobs, API server, etc.) are described in `gpi-architecture.md`.
 
 ---
 

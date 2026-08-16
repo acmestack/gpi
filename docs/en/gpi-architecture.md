@@ -3,7 +3,7 @@
 - **Doc version**: v69 (2026-08-15)
 - **module**: `github.com/acmestack/gpi`
 - **CLI**: `gpi` (binary `cmd/gpi`)
-- **Goal**: Following the SkyPilot model, rewrite multi-cloud compute scheduling in Go, matching SkyPilot's launcher / optimizer / SkyServe / Sky Jobs / API server.
+- **Goal**: Following the SkyPilot model, build multi-cloud compute scheduler in Go, matching SkyPilot's launcher / optimizer / SkyServe / Sky Jobs / API server.
 
 ## 1. Positioning
 
