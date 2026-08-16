@@ -3,6 +3,7 @@
 - **文档版本**：v27（2026-08-15）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v28（2026-08-16）**：GCP/Azure/Kubernetes cloud Provider 实现；v0.0.1 发布 + tag 推送；v0.0.2 开发准备（VERSION + buildinfo bump）；release.yml fork 保护；AGENTS.md 新增 provider.go/client.go 文件结构规则与发布后流程。
 - **v27（2026-08-15）**：架构图 v65→v67——移除 Rate Limiting；执行后端节点放大；云层丰富（aliyun ECS / aws EC2 / gcp+azure 计划 / 更多 + VPC/SG/Subnet/Spot/Pricing）；新增节点层（Ray+gpilet）；扩展能力改右侧纵栏；颜色对比增强。架构文档 v66→v67。
 - **v26（2026-08-15）**：架构图 v64→v65——overview 从 LR 流程图改为分层带状布局（消除线交叉），横切能力紧跟 REST API 右侧，新增扩展能力区（接入新云/扩展 Optimizer/自定义 Encoder），容器尺寸修正（redis 不再溢出），英文版全部翻译；同时将架构图嵌入 README 中英文首页。
 - **v25（2026-08-15）**：架构图从 mermaid 替换为 SVG（透明背景、模块分色、圆角细线、紧凑对齐），中英文版同步，架构文档 v62→v63。分支 `fix-docs-links`。
@@ -32,6 +33,38 @@
 - **v1（2026-08-09）**：创建本文件，汇总从立项起的沟通历史与关键决策。
 
 ## 沟通记录
+
+### 2026-08-16（GCP Provider 实现）
+
+- **决策**：新增 GCP cloud.Provider（`internal/cloud/gcp/`），零 SDK 依赖，OAuth2 Bearer Token 认证 + Compute Engine REST API。
+- **实现**：`client.go`（HTTP client + OAuth2）、`provider.go`（实现 `cloud.Provider`）、`metadata.go`（`catalog.Source` 实现，FetchSpecs/FetchPrices）。
+- **规格**：动态查询 Machine Types API + Accelerator Types API，自动检测 GPU 型号（nvidia-tesla-*）。
+- **测试**：24 单元测试（mock HTTP server），全部通过。
+- **约定**：CloudName/logger 必须在 provider.go（非 client.go），client.go 只放 Credentials/Client/APIError 类型和 HTTP 方法。
+- **文档**：架构文档 v70，新增 §7.3 GCP Provider 章节。
+
+### 2026-08-16（Azure Provider 实现）
+
+- **决策**：新增 Azure cloud.Provider（`internal/cloud/azure/`），零 SDK 依赖，OAuth2 Client Credentials 认证 + ARM REST API。
+- **实现**：`client.go`（HTTP client + OAuth2）、`provider.go`（实现 `cloud.Provider`）、`metadata.go`（`catalog.Source` 实现，FetchSpecs/FetchPrices）。
+- **规格**：动态查询 VM Sizes API，状态转换：`provisioning`→pending、`suspended`→stopped、`repairing`→pending、`terminating`→terminated。
+- **测试**：18 单元测试（mock HTTP server），全部通过。
+- **文档**：架构文档 v70，新增 §7.4 Azure Provider 章节。
+
+### 2026-08-16（Kubernetes Provider 实现）
+
+- **决策**：K8s 作为 cloud.Provider 实现（非 backend.Backend），与 aliyun/aws/gcp/azure 同级。Pod = Instance，kubeconfig context = Region，Namespace = VPC。
+- **实现**：`client.go`（kubeconfig/context 管理）、`provider.go`（Pod 生命周期：create/delete/start/stop/restart/status/list）、`gpu.go`（GPU 标签检测 + nodeAffinity）、`metadata.go`（`catalog.Source`）。
+- **标签前缀**：`gpi.dev/`（DNS subdomain 格式）。
+- **测试**：17 单元测试，全部通过。
+- **文档**：架构文档 v70，新增 §7.2 Kubernetes Provider 章节。
+
+### 2026-08-16（v0.0.1 发布 · v0.0.2 准备）
+
+- **决策**：发布 v0.0.1 tag，推送到 upstream + origin，tag message 中英双语完整特性列表。
+- **决策**：v0.0.2 开发准备——新建 `VERSION` 文件（0.0.2）、bump `buildinfo.Version`、AGENTS.md 新增「发布后必须执行」5 步流程。
+- **决策**：release.yml 加 `if: github.repository == 'acmestack/gpi'`，防止 fork 推 tag 触发 release/Docker push。
+- **分支规则**：新功能分支必须从最新 upstream/main 切出，命名 `feature/<name>`、`docs/<name>`、`fix/<name>`。
 
 ### 2026-08-08（立项 · v1 骨架）
 
@@ -281,7 +314,8 @@
 |------|------|
 | 元数据来源 | 全动态，无静态数据；规格/价格按 TTL 缓存，每云可自定义 |
 | 元数据包结构 | 契约 `internal/cloud/catalog`（对应 sky/catalogs）+ Cache `internal/metacache` |
-| 新云接入 | 一个包 + 一个 struct（Provider 同时实现 Provider+Source） |
+| 新云接入 | 一个包 + 一个 struct（Provider 同时实现 Provider+Source）；CloudName/logger 必须在 provider.go |
+| 已实现云 | aliyun、aws、gcp、azure、kubernetes（kubernetes Pod = Instance） |
 | Optimizer | 可插拔；两种模式：指定优化器（cost/time）或策略（cost,time 字典序） |
 | 扩展优化器 | 实现 `Metric` + `RegisterMetric`/`NewStrategy`（字典序 `lexicographicOptimizer` 排序） |
 | 元数据访问 | 全局 `defaultMeta`（`SetDefaultMeta` 注入） |
@@ -294,6 +328,7 @@
 | OpenAPI 在线查看 | 仓库根 `openapi.json` + GitLab 内建 viewer（无需 GitHub Pages） |
 | License / CLA | MIT；AcmeStack CLA（`.github/CLA.md` + cla-assistant） |
 | 沟通记录 | 每次沟通后追加到 `aiagents/MEMORY.md` |
+| Workflow 保护 | release.yml 加 `if: github.repository == 'acmestack/gpi'` 防 fork 触发；仓库设置取消 "Run workflows from fork pull requests" |
 | 平台 | Linux/macOS；无 Windows |
 | 用户配置文件 | `$GPI_HOME/config.yaml`（默认 `~/.gpi/config.yaml`）+ 项目 `.gpi.yaml` 层叠（项目覆盖用户） |
 | 云专项配置 | 各云自己包内定义 `Config` struct + `LoadConfig()`（`config.Load().Section(CloudName, &c)`），`internal/config` 云无关、新云零改动 |
