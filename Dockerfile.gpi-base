@@ -1,0 +1,25 @@
+# Builds the gpi base image: a Ray image with gpilet baked in. This is the
+# default image used for gpi Kubernetes node pods (see kubernetes GetImage),
+# so pods bootstrap gpilet + Ray without extra provisioning. Override with the
+# `kubernetes.image` config key to use a custom image.
+#
+# Build & push:
+#   docker build -f Dockerfile.gpi-base -t ghcr.io/acmestack/gpi-base:latest .
+#   docker push ghcr.io/acmestack/gpi-base:latest
+
+# Stage 1: build gpilet (static binary)
+FROM golang:1.26 AS builder
+WORKDIR /src
+ARG VERSION=0.0.2
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN V="${VERSION#v}" && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/acmestack/gpi/internal/buildinfo.Version=${V}" -o /out/gpilet ./cmd/gpilet
+
+# Stage 2: Ray image + gpilet. rayproject/ray ships Ray and a shell.
+FROM rayproject/ray:2.40.0-py311
+USER root
+COPY --from=builder /out/gpilet /usr/local/bin/gpilet
+RUN mkdir -p /var/lib/gpilet
+ENTRYPOINT []

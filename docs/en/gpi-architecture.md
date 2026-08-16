@@ -1,6 +1,6 @@
 # Gpi Architecture Design Document
 
-- **Doc version**: v69 (2026-08-15)
+- **Doc version**: v70 (2026-08-17)
 - **module**: `github.com/acmestack/gpi`
 - **CLI**: `gpi` (binary `cmd/gpi`)
 - **Goal**: Following the SkyPilot model, build multi-cloud compute scheduler in Go, matching SkyPilot's launcher / optimizer / SkyServe / Sky Jobs / API server.
@@ -119,9 +119,12 @@ Caching ensures idempotency: `RunInstances` internally fills in ImageID, Securit
 - **Concept mapping**: kubeconfig context = Region, Pod = Instance, Namespace = VPC, container image = Image.
 - **Virtual instance types**: `{cpus}CPU--{memGB}GB` or `{cpus}CPU--{memGB}GB--{gpu}:{count}` (e.g., `4CPU--16GB--H100:1`).
 - **GPU detection**: Scans node labels, auto-matches GKE/GFD/Karpenter/CoreWeave/SkyPilot formats, generates nodeAffinity injected into pod spec.
+- **SkyPilot-style bootstrap**: each node pod's start command automatically launches **gpilet** (`nohup gpilet serve` daemon writing `/var/lib/gpilet/status.json`) and **Ray** — the head runs `ray start --head` (port 6379, dashboard 8265, bound to its own pod IP), workers run `ray start --address=<head_pod_ip>:6379` (with retry). Multi-node creation is **sequential**: head is created first, waits for its pod IP, then workers are created with the head address injected. Env vars `GPI_ROLE`/`GPI_POD_IP` (downward API)/`GPI_HEAD_ADDR` are injected.
+- **Default image**: `GetImage` returns the prebuilt `ghcr.io/acmestack/gpi-base:latest` (see `Dockerfile.gpi-base`, based on `rayproject/ray` with the gpilet binary baked in); overridable via the `kubernetes.image` config key.
 - **Pod lifecycle**: `RunInstances` creates pods (with GPU resource request + nodeAffinity), `TerminateInstances` force-deletes (gracePeriod=0).
 - **Metadata**: `FetchSpecs` dynamically queries node allocatable resources, `FetchPrices` returns $0 (self-hosted clusters have no billing).
 - **No-op methods**: `CreateKeyPair`/`DeleteKeyPair` (uses RBAC), `StopInstances`/`StartInstances` (pods cannot be stopped), `CreateVSwitch`/`ListVSwitches` (K8s networking is automatic).
+- **kubernetes config section** (`$GPI_HOME/config.yaml` or project `.gpi.yaml`): `kubernetes: { context, namespace, image, gpilet_dir, gpilet_interval, ray_head_port, ray_dashboard_port }`, see `examples/gpi-config.yaml`.
 - Dependencies: `k8s.io/client-go`, `k8s.io/api`, `k8s.io/apimachinery`.
 
 ## 8. Provisioner flow & Ray cluster
@@ -459,6 +462,7 @@ The key naming style of response JSON is configurable, default **lower camelCase
 
 ## Version history
 
+- **v70 (2026-08-17)**: Kubernetes Provider enhanced — SkyPilot-style node bootstrap (pod start command auto-launches gpilet daemon + Ray: head `ray start --head`, workers join; multi-node sequential with head pod IP captured first); new `Dockerfile.gpi-base` default node image (rayproject/ray + gpilet, `ghcr.io/acmestack/gpi-base:latest`); `kubernetes` config section (context/namespace/image/gpilet/Ray ports); e2e now covers gpilet + Ray real runtime. Doc bumped to v70.
 - **v67 (2026-08-15)**: Architecture diagram refined — removed Rate Limiting (unsupported by gpi); enlarged execution backend nodes for proper container proportion; enriched Cloud layer (aliyun ECS / aws EC2 / gcp(planned) / azure(planned) / more..., plus VPC/SG/Subnet/Spot/Pricing info nodes); added Nodes layer (Ray cluster + gpilet agent); Extensibility moved to right sidebar; improved color contrast (light container + saturated child nodes). Doc bumped to v67.
 - **v69 (2026-08-15)**: Added Kubernetes cloud backend — following SkyPilot pattern, K8s implemented as `cloud.Provider` (same level as aliyun/aws), kubeconfig context = Region, Pod = Instance; virtual instance types `4CPU--16GB--H100:1`; automatic GPU detection (GKE/GFD/Karpenter/CoreWeave/SkyPilot label formats) + nodeAffinity; `catalog.Source` dynamically queries node resources, price = $0; new `internal/cloud/kubernetes/` package (provider/client/gpu/metadata), 9 unit tests passing. Doc bumped to v69.
 - **v65 (2026-08-15)**: Replaced mermaid with SVG — overview redesigned as layered horizontal bands (eliminates line crossings), module-specific colors, rounded corners with thin strokes, containers fully enclose all nodes; added Extensibility section (New Cloud / Custom Optimizer / Custom Encoder); Cross-cutting placed right after Access layer; English version fully translated. Doc bumped to v65.

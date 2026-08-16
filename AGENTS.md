@@ -10,6 +10,10 @@
   3. 项目内部包（`github.com/acmestack/gpi/...`）。
   统一用 `goimports -local github.com/acmestack/gpi -w <file>` 自动分组（工具已装在 `~/go/bin/goimports`）。不要手动把第三方和内部包混在一组。
 - **生成/新增 Go 文件后必须格式化**：每次生成或新增 `.go` 文件后，立即运行 `gofmt -w <file>` 或 `goimports -local github.com/acmestack/gpi -w <file>` 格式化，确保缩进、空行、import 分组符合规范。
+- **函数参数约定**：
+  - **参数越少越好**：3 个及以上参数且含义相关的，优先打包成一个 struct 传参（如 kubernetes 的 `buildPod(p podParams)`），后续新增参数只加 struct 字段，不改签名。
+  - **用 config 的函数，config 参数放第一位**：形如 `func f(cfg *Config, ...)`，cfg 可 nil（内部回落默认值）。
+  - 避免把调用上下文信息（namespace、region、role 等）拆成多个平铺参数。
 - **provider.go 文件结构顺序**：每个 cloud provider 的 `provider.go` 必须按以下顺序组织：
   1. `var logger = logging.WithName("<name>")` — 包级日志器
   2. `const CloudName = "<name>"` — 云名称常量（**必须在 provider.go 中，不在 client.go 中**）

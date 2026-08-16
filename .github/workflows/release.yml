@@ -94,3 +94,16 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/gpi:${{ github.ref_name }}
             ghcr.io/${{ github.repository_owner }}/gpi:latest
+
+      - name: Build and push gpi base image (gpilet + Ray)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.gpi-base
+          push: true
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            VERSION=${{ github.ref_name }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/gpi-base:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/gpi-base:latest

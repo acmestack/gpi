@@ -1,8 +1,9 @@
 # Gpi 项目沟通记录（MEMORY）
 
-- **文档版本**：v27（2026-08-15）
+- **文档版本**：v30（2026-08-17）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v30（2026-08-17）**：Kubernetes e2e 扩展覆盖 gpilet + Ray 真实运行——SkyPilot 式 bootstrap（head `ray start --head`、worker join、gpilet 常驻）；新增 `Dockerfile.gpi-base`（rayproject/ray + gpilet，默认节点镜像）；`kubernetes` config 段支持 context/namespace/image/gpilet/ray 端口配置；e2e 用 gpi-base 镜像 + `kind load docker-image`；release.yml 发布 gpi-base 镜像；`examples/gpi-config.yaml` 补 kubernetes 段；e2e.yml 镜像构建改 buildx + gha 缓存（build 前置早暴露）；kubernetes provider 函数参数收敛（`buildPod` 传 `podParams` struct、`podStartupCommand(cfg, role)` cfg 放第一位）。
 - **v29（2026-08-16）**：Kubernetes e2e 测试基础设施——`e2e_test.go`（build tag e2e，真实 kind 集群生命周期测试）+ `make e2e` + `.github/workflows/e2e.yml`（kind + 3 个 k8s 版本矩阵 v1.36.1/v1.35.5/v1.34.8，PR 强制门槛）。覆盖率检查本次暂缓。
 - **v28（2026-08-16）**：GCP/Azure/Kubernetes cloud Provider 实现；v0.0.1 发布 + tag 推送；v0.0.2 开发准备（VERSION + buildinfo bump）；release.yml fork 保护（注释化）；AGENTS.md 新增 provider.go/client.go 文件结构规则、发布后流程、新特性/Bug 开发流程。
 - **v27（2026-08-15）**：架构图 v65→v67——移除 Rate Limiting；执行后端节点放大；云层丰富（aliyun ECS / aws EC2 / gcp+azure 计划 / 更多 + VPC/SG/Subnet/Spot/Pricing）；新增节点层（Ray+gpilet）；扩展能力改右侧纵栏；颜色对比增强。架构文档 v66→v67。
@@ -80,6 +81,20 @@
 - **e2e 覆盖**：单节点 Pod 全生命周期——RunInstances（Pending）→ 轮询 Running → ListInstances → DescribeInstances → GetPublicIP（pod IP 非空）→ TerminateInstances → 确认删除。
 - **新增文件**：`.github/workflows/e2e.yml`、`internal/cloud/kubernetes/e2e_test.go`；`Makefile` 加 `e2e` target；AGENTS.md 新增「测试与 CI」小节（PR 合入门槛）。
 - **发现既有问题**：`Provisioner.Down`（provisioner.go:592）用 `n.ID`（pod UID）调 `TerminateInstances`，但 k8s provider 的 `TerminateInstances` 期望 pod 名（注释"uid is actually the pod name"）——ID 语义不一致，后续需修复（e2e 当前直接传 pod 名规避）。
+
+### 2026-08-17（K8s e2e 覆盖 gpilet + Ray · gpi-base 镜像 · kubernetes 配置化）
+
+- **背景**：用户指出 e2e 只覆盖 pod 生命周期，gpilet 和 Ray 未覆盖。用户想法：预构建含 gpilet 的镜像（pod 直接用），Ray 按 SkyPilot 模式。
+- **调研结论**：SkyPilot K8s 后端 = KubeRay operator + headless Service（较重）；gpi 方案 = 预构建镜像 + head 先建/等 PodIP/注入 worker 的串行 bootstrap，**更轻量且与 SkyPilot 镜像策略一致**，e2e 验证真实运行。
+- **决策（SkyPilot 式 bootstrap）**：`buildPod` 注入 `GPI_ROLE`/`GPI_POD_IP`（downward API）/`GPI_HEAD_ADDR` env；容器启动命令 `podStartupCommand`——先 `nohup gpilet serve`（常驻），head 跑 `ray start --head`（绑定自身 PodIP），worker `until ray start --address=$GPI_HEAD_ADDR:6379`（重试 join）。
+- **决策（gpi-base 镜像）**：新增 `Dockerfile.gpi-base`——`rayproject/ray:2.40.0-py311` + 静态编译的 `gpilet`（/usr/local/bin/gpilet）+ 预置 `/var/lib/gpilet`；`GetImage` 默认返回 `ghcr.io/acmestack/gpi-base:latest`。
+- **决策（kubernetes 配置段）**：`internal/cloud/kubernetes/config.go` 新增 `Config`（context/namespace/image/gpilet_dir/gpilet_interval/ray_head_port/ray_dashboard_port），`config.Load().Section("kubernetes", ...)`；`internal/config` 零改动（云专项配置下沉模式复用）。
+- **决策（e2e 升级）**：e2e 默认镜像从 pause 改为 gpi-base；新增 `TestE2EGpiletAndRay`——2 节点真实验证 `ray status` 显示 2 节点、`pgrep gpilet` 在 head+worker 均运行、`status.json` 生成；e2e.yml 加 build + `kind load docker-image` 步骤。
+- **决策（release）**：release.yml docker job 追加 gpi-base 镜像构建推送（amd64+arm64，tag + latest）。
+- **决策（example 同步）**：`examples/gpi-config.yaml` 新增 `kubernetes:` 段。
+- **决策（workflow 镜像构建顺序）**：e2e.yml 从裸 `docker build` 改为 `docker/build-push-action` + **GHA layer 缓存**（`cache-from/to: type=gha`），build 移到 kind 之前（build 失败更早暴露、3 矩阵复用层加速），load 独立一步。
+- **决策（provider 参数收敛）**：kubernetes provider 函数参数最小化——`buildPod` 改收单个 `podParams` struct（Name/Namespace/Spec/Role/HeadAddr/Cfg），后续新增 knobs 只加字段；`podStartupCommand(cfg, role)` 用 config 的参数放第一位；约定：用 config 的函数 cfg 放第一位、多参数打包 struct、参数越少越好。
+- **已知问题**：本地无 docker/kind，e2e 需靠 PR workflow 验证；`go.mod` 增加 remotecommand/spdy/websocket 依赖（e2e exec 用）。
 
 ### 2026-08-08（立项 · v1 骨架）
 
@@ -344,7 +359,8 @@
 | License / CLA | MIT；AcmeStack CLA（`.github/CLA.md` + cla-assistant） |
 | 沟通记录 | 每次沟通后追加到 `aiagents/MEMORY.md` |
 | Workflow 保护 | release.yml 加 `if: github.repository == 'acmestack/gpi'` 防 fork 触发；仓库设置取消 "Run workflows from fork pull requests" |
-| K8s e2e | `.github/workflows/e2e.yml` kind 集群 × 3 版本矩阵（v1.36.1/v1.35.5/v1.34.8），PR 强制门槛；e2e 用 `//go:build e2e` tag + `make e2e` 隔离 |
+| K8s e2e | `.github/workflows/e2e.yml` kind 集群 × 3 版本矩阵（v1.36.1/v1.35.5/v1.34.8），PR 强制门槛；e2e 用 `//go:build e2e` tag + `make e2e` 隔离；默认镜像 gpi-base（gpilet + Ray），新增 `TestE2EGpiletAndRay` 验证 Ray 集群 + gpilet 运行 |
+| K8s 节点 bootstrap | 预构建 `Dockerfile.gpi-base`（rayproject/ray + gpilet）；`buildPod` 注入 env（GPI_ROLE/GPI_POD_IP/GPI_HEAD_ADDR）+ 启动命令（gpilet serve + ray start head/worker）；head 先建等 PodIP、worker join |
 | 平台 | Linux/macOS；无 Windows |
 | 用户配置文件 | `$GPI_HOME/config.yaml`（默认 `~/.gpi/config.yaml`）+ 项目 `.gpi.yaml` 层叠（项目覆盖用户） |
 | 云专项配置 | 各云自己包内定义 `Config` struct + `LoadConfig()`（`config.Load().Section(CloudName, &c)`），`internal/config` 云无关、新云零改动 |

@@ -64,6 +64,7 @@
   - `Launch` 时 provisioner 自动把 gpilet 二进制上传到每个节点并拉起（未找到本地 gpilet 二进制则静默跳过，不影响置备）；
   - `gpi cluster nodes C --health`：经 SSH 读取各节点 gpilet 状态，展示实时健康（cpu/load/mem/gpu/ray）。
   - 定位：作为 skylet 的轻量等价物，为后续自动伸缩、健康轮询、资源实时上报提供节点侧数据源；暂无命令/日志代理（当前控制面走 SSH 直连）。
+- **Kubernetes 节点镜像（对标 SkyPilot k8s 镜像预置 skylet）**：`Dockerfile.gpi-base` 基于 `rayproject/ray` 预置 gpilet 二进制（`/usr/local/bin/gpilet`），默认节点镜像 `ghcr.io/acmestack/gpi-base:latest`；Pod 启动命令自动拉起 gpilet + Ray（head/worker），无需 SSH 上传（与 VM 后端的 SSH 上传路径互补）。
 
 ## 7. 可插拔持久化（file / sqlite / mysql / redis）
 

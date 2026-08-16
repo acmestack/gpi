@@ -64,6 +64,7 @@
   - On `Launch`, the provisioner automatically uploads the gpilet binary to each node and starts it (if no local gpilet binary is found, it silently skips and provisioning is unaffected);
   - `gpi cluster nodes C --health`: reads each node's gpilet status over SSH and shows live health (cpu/load/mem/gpu/ray).
   - Positioning: a lightweight equivalent of skylet that provides a node-side data source for future autoscaling, health polling, and real-time resource reporting; there is currently no command/log proxy (the control plane uses direct SSH).
+- **Kubernetes node image (counterpart of SkyPilot k8s images with skylet baked in)**: `Dockerfile.gpi-base` is based on `rayproject/ray` with the gpilet binary preinstalled at `/usr/local/bin/gpilet`; the default node image is `ghcr.io/acmestack/gpi-base:latest`; the pod start command auto-launches gpilet + Ray (head/worker), so no SSH upload is needed (complementary to the VM backend's SSH upload path).
 
 ## 7. Pluggable persistence (file / sqlite / mysql / redis)
 

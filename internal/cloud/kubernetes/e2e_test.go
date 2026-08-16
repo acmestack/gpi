@@ -7,13 +7,22 @@
 package kubernetes
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/acmestack/gpi/internal/cloud"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/remotecommand"
 )
 
 // TestE2ELifecycle creates a single-node pod, lists it back, describes it,
@@ -109,6 +118,131 @@ func TestE2ELifecycle(t *testing.T) {
 	}
 }
 
+// TestE2EGpiletAndRay creates a 2-node cluster and verifies that the
+// SkyPilot-style bootstrap actually works: gpilet runs in every node pod and
+// a Ray cluster forms with the head and the worker.
+func TestE2EGpiletAndRay(t *testing.T) {
+	ctx := context.Background()
+
+	if _, err := CurrentContext(); err != nil {
+		t.Skipf("no kubeconfig available, skipping e2e: %v", err)
+	}
+	region, err := CurrentContext()
+	if err != nil {
+		t.Fatalf("CurrentContext: %v", err)
+	}
+
+	prefix := "gpi-e2e-" + randomSuffix()
+	defer func() {
+		p := Provider{}
+		insts, err := p.ListInstances(ctx, region, prefix)
+		if err != nil {
+			return
+		}
+		ids := make([]string, 0, len(insts))
+		for _, in := range insts {
+			ids = append(ids, in.ID)
+		}
+		_ = p.TerminateInstances(ctx, region, ids)
+	}()
+
+	spec := cloudLaunchSpec(prefix, region)
+	spec.NumNodes = 2
+	p := Provider{}
+	insts, err := p.RunInstances(ctx, spec)
+	if err != nil {
+		t.Fatalf("RunInstances: %v", err)
+	}
+	if len(insts) != 2 {
+		t.Fatalf("RunInstances returned %d instances, want 2", len(insts))
+	}
+
+	cs, err := clientFor(region)
+	if err != nil {
+		t.Fatalf("clientFor: %v", err)
+	}
+
+	// Wait for both pods to be Running.
+	for _, in := range insts {
+		waitForPodRunning(t, ctx, p, region, in.ID)
+	}
+
+	// Head must show a 2-node Ray cluster (head + worker). The first
+	// instance returned by RunInstances is the head; the rest are workers.
+	headPod := insts[0].Name
+	rayStatus := execInPod(t, ctx, cs, headPod, "ray status")
+	if !strings.Contains(rayStatus, "Ray runtime is running") {
+		t.Errorf("head ray status did not report a running runtime:\n%s", rayStatus)
+	}
+	if !strings.Contains(rayStatus, "2 nodes") && !strings.Contains(rayStatus, "1 active, 1 pending") {
+		t.Errorf("head ray status does not show the worker joined:\n%s", rayStatus)
+	}
+
+	// gpilet must be running inside both pods.
+	pods := []string{headPod, insts[1].Name}
+	for _, pod := range pods {
+		out := execInPod(t, ctx, cs, pod, "pgrep -f /usr/local/bin/gpilet")
+		if strings.TrimSpace(out) == "" {
+			t.Errorf("gpilet process not found in pod %s", pod)
+		}
+	}
+
+	// gpilet must have written its status file (default interval 10s).
+	out := execInPod(t, ctx, cs, headPod, "test -f /var/lib/gpilet/status.json && cat /var/lib/gpilet/status.json")
+	if strings.TrimSpace(out) == "" {
+		t.Errorf("gpilet status.json not found in pod %s", headPod)
+	}
+}
+
+// execInPod runs a command in the first container of a pod and returns stdout.
+func execInPod(t *testing.T, ctx context.Context, cs *kubernetes.Clientset, podName, cmd string) string {
+	t.Helper()
+	cfg := restConfig()
+	req := cs.CoreV1().RESTClient().
+		Post().
+		Resource("pods").
+		Name(podName).
+		Namespace(defaultNamespace).
+		SubResource("exec").
+		VersionedParams(&corev1.PodExecOptions{
+			Container: "ray-node",
+			Command:   []string{"/bin/sh", "-c", cmd},
+			Stdout:    true,
+			Stderr:    true,
+		}, scheme.ParameterCodec)
+
+	exec, err := remotecommand.NewSPDYExecutor(cfg, "POST", req.URL())
+	if err != nil {
+		t.Fatalf("exec %s: %v", podName, err)
+	}
+	var buf bytes.Buffer
+	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
+		Stdout: &buf,
+		Stderr: &buf,
+	})
+	if err != nil {
+		t.Fatalf("exec %s (%q): %v", podName, cmd, err)
+	}
+	return buf.String()
+}
+
+// restConfig returns the REST config for the current context (used by exec).
+func restConfig() *rest.Config {
+	cfg := os.Getenv("KUBECONFIG")
+	if cfg == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil
+		}
+		cfg = filepath.Join(home, ".kube", "config")
+	}
+	rc, err := clientcmd.BuildConfigFromFlags("", cfg)
+	if err != nil {
+		return nil
+	}
+	return rc
+}
+
 // waitForPodRunning polls ListInstances until the pod is running or a timeout.
 func waitForPodRunning(t *testing.T, ctx context.Context, p Provider, region, id string) {
 	t.Helper()
@@ -126,10 +260,9 @@ func waitForPodRunning(t *testing.T, ctx context.Context, p Provider, region, id
 func cloudLaunchSpec(prefix, region string) *cloud.LaunchSpec {
 	image := os.Getenv("GPI_E2E_IMAGE")
 	if image == "" {
-		// registry.k8s.io/pause is preloaded in every kind node image and
-		// stays Running, so it is the most reliable choice for the lifecycle
-		// test. Override with GPI_E2E_IMAGE when a custom image is needed.
-		image = "registry.k8s.io/pause:3.9"
+		// Default to the gpi base image (gpilet + Ray) so e2e verifies real
+		// runtime bootstrap. Override with GPI_E2E_IMAGE when needed.
+		image = defaultBaseImage
 	}
 	return &cloud.LaunchSpec{
 		NamePrefix:   prefix,

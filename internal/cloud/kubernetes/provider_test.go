@@ -1,12 +1,27 @@
 package kubernetes
 
 import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/acmestack/gpi/internal/cloud"
+	"github.com/acmestack/gpi/internal/config"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// envValue returns the value (or "" when not set) of an env var on a container.
+func envValue(pod *corev1.Pod, name string) string {
+	for _, env := range pod.Spec.Containers[0].Env {
+		if env.Name == name {
+			return env.Value
+		}
+	}
+	return ""
+}
 
 func TestParseInstanceType(t *testing.T) {
 	tests := []struct {
@@ -154,7 +169,7 @@ func TestBuildPod(t *testing.T) {
 		Tags:         map[string]string{"env": "test"},
 	}
 
-	pod := buildPod("my-cluster-head", "default", spec, "head")
+	pod := buildPod(podParams{Name: "my-cluster-head", Namespace: "default", Spec: spec, Role: "head"})
 
 	if pod.Name != "my-cluster-head" {
 		t.Errorf("buildPod().Name = %q, want %q", pod.Name, "my-cluster-head")
@@ -199,7 +214,7 @@ func TestBuildPod_WithGPU(t *testing.T) {
 		Region:       "test-context",
 	}
 
-	pod := buildPod("gpu-cluster-head", "default", spec, "head")
+	pod := buildPod(podParams{Name: "gpu-cluster-head", Namespace: "default", Spec: spec, Role: "head"})
 
 	res := pod.Spec.Containers[0].Resources
 	gpuReq := res.Requests[corev1.ResourceName("nvidia.com/gpu")]
@@ -217,15 +232,122 @@ func TestBuildPod_MultiNode(t *testing.T) {
 	}
 
 	// Head pod
-	head := buildPod("multi-cluster-head", "default", spec, "head")
+	head := buildPod(podParams{Name: "multi-cluster-head", Namespace: "default", Spec: spec, Role: "head"})
 	if head.Labels[labelRole] != "head" {
 		t.Errorf("head pod role = %q, want %q", head.Labels[labelRole], "head")
 	}
 
-	// Worker pod
-	worker := buildPod("multi-cluster-worker1", "default", spec, "worker")
+	// Worker pod joins the head's Ray cluster.
+	worker := buildPod(podParams{Name: "multi-cluster-worker1", Namespace: "default", Spec: spec, Role: "worker", HeadAddr: "10.0.0.5"})
 	if worker.Labels[labelRole] != "worker" {
 		t.Errorf("worker pod role = %q, want %q", worker.Labels[labelRole], "worker")
+	}
+	if got := envValue(worker, envHeadAddr); got != "10.0.0.5" {
+		t.Errorf("worker env[%s] = %q, want %q", envHeadAddr, got, "10.0.0.5")
+	}
+	if got := envValue(head, envHeadAddr); got != "" {
+		t.Errorf("head env[%s] = %q, want empty", envHeadAddr, got)
+	}
+
+	// Head must bind Ray to its own pod IP; worker must join via head address.
+	headCmd := head.Spec.Containers[0].Command
+	if len(headCmd) < 3 || !strings.Contains(headCmd[2], "--head") {
+		t.Errorf("head command = %v, want ray --head bootstrap", headCmd)
+	}
+	if !strings.Contains(headCmd[2], "--node-ip-address=$GPI_POD_IP") {
+		t.Errorf("head command should inject pod IP: %v", headCmd)
+	}
+	if !strings.Contains(headCmd[2], gpiletBin) {
+		t.Errorf("head command should start gpilet from %s: %v", gpiletBin, headCmd)
+	}
+	workerCmd := worker.Spec.Containers[0].Command
+	if len(workerCmd) < 3 || !strings.Contains(workerCmd[2], "--address=$GPI_HEAD_ADDR:6379") {
+		t.Errorf("worker command = %v, want ray --address bootstrap", workerCmd)
+	}
+}
+
+func TestBuildPod_ConfigDrivenCommand(t *testing.T) {
+	cfg := &Config{
+		Namespace:        "ml",
+		Image:            "example.com/custom:1",
+		GpiletDir:        "/data/gpilet",
+		GpiletInterval:   5,
+		RayHeadPort:      7777,
+		RayDashboardPort: 9999,
+	}
+	spec := &cloud.LaunchSpec{
+		InstanceType: "4CPU--16GB",
+		ImageID:      cfg.Image,
+		NamePrefix:   "cfg-cluster",
+		NumNodes:     2,
+	}
+
+	head := buildPod(podParams{Name: "cfg-cluster-head", Namespace: "default", Spec: spec, Role: "head", Cfg: cfg})
+	headCmd := head.Spec.Containers[0].Command
+	if !strings.Contains(headCmd[2], "--dir /data/gpilet --interval 5") {
+		t.Errorf("head command should use configured gpilet dir/interval: %v", headCmd)
+	}
+	if !strings.Contains(headCmd[2], "--port=7777") || !strings.Contains(headCmd[2], "--dashboard-port=9999") {
+		t.Errorf("head command should use configured Ray ports: %v", headCmd)
+	}
+
+	worker := buildPod(podParams{Name: "cfg-cluster-worker1", Namespace: "default", Spec: spec, Role: "worker", HeadAddr: "10.0.0.9", Cfg: cfg})
+	workerCmd := worker.Spec.Containers[0].Command
+	if !strings.Contains(workerCmd[2], "--address=$GPI_HEAD_ADDR:7777") {
+		t.Errorf("worker command should use configured Ray head port: %v", workerCmd)
+	}
+}
+
+func TestConfig_EffectiveDefaults(t *testing.T) {
+	if got := (*Config)(nil).EffectiveNamespace(); got != defaultNamespace {
+		t.Errorf("nil EffectiveNamespace = %q, want %q", got, defaultNamespace)
+	}
+	if got := (&Config{}).EffectiveNamespace(); got != defaultNamespace {
+		t.Errorf("empty EffectiveNamespace = %q, want %q", got, defaultNamespace)
+	}
+	if got := (&Config{Namespace: "x"}).EffectiveNamespace(); got != "x" {
+		t.Errorf("EffectiveNamespace = %q, want x", got)
+	}
+	if got := (&Config{GpiletInterval: 3}).EffectiveGpiletInterval(); got != 3 {
+		t.Errorf("EffectiveGpiletInterval = %d, want 3", got)
+	}
+	if got := (&Config{}).EffectiveGpiletInterval(); got != gpiletIntervalSec {
+		t.Errorf("empty EffectiveGpiletInterval = %d, want %d", got, gpiletIntervalSec)
+	}
+	if got := (&Config{RayHeadPort: 7000}).EffectiveRayHeadPort(); got != 7000 {
+		t.Errorf("EffectiveRayHeadPort = %d, want 7000", got)
+	}
+	if got := (&Config{}).EffectiveRayHeadPort(); got != rayHeadPort {
+		t.Errorf("empty EffectiveRayHeadPort = %d, want %d", got, rayHeadPort)
+	}
+}
+
+func TestGetImage_Default(t *testing.T) {
+	p := Provider{}
+	img, err := p.GetImage(context.Background(), "ctx", "")
+	if err != nil {
+		t.Fatalf("GetImage: %v", err)
+	}
+	if img != defaultBaseImage {
+		t.Errorf("GetImage() = %q, want default %q", img, defaultBaseImage)
+	}
+}
+
+func TestGetImage_ConfigOverride(t *testing.T) {
+	config.SetPath(filepath.Join(t.TempDir(), "config.yaml"))
+	defer config.Reset()
+	cfgPath, _ := config.UserPath()
+	if err := os.WriteFile(cfgPath, []byte("kubernetes:\n  image: example.com/custom:1\n"), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	p := Provider{}
+	img, err := p.GetImage(context.Background(), "ctx", "")
+	if err != nil {
+		t.Fatalf("GetImage: %v", err)
+	}
+	if img != "example.com/custom:1" {
+		t.Errorf("GetImage() = %q, want config override", img)
 	}
 }
 
@@ -263,7 +385,7 @@ func TestBuildPod_NoGPU_EnvVars(t *testing.T) {
 		NumNodes:     1,
 	}
 
-	pod := buildPod("test-head", "default", spec, "head")
+	pod := buildPod(podParams{Name: "test-head", Namespace: "default", Spec: spec, Role: "head"})
 
 	// Should have NVIDIA_VISIBLE_DEVICES=none when no GPU
 	found := false
@@ -276,6 +398,19 @@ func TestBuildPod_NoGPU_EnvVars(t *testing.T) {
 	if !found {
 		t.Error("buildPod() without GPU should set NVIDIA_VISIBLE_DEVICES=none")
 	}
+
+	// Head should inject its own pod IP via downward API for `ray start --head`.
+	podIPSet := false
+	for _, env := range pod.Spec.Containers[0].Env {
+		if env.Name == envPodIP && env.ValueFrom != nil && env.ValueFrom.FieldRef != nil &&
+			env.ValueFrom.FieldRef.FieldPath == "status.podIP" {
+			podIPSet = true
+			break
+		}
+	}
+	if !podIPSet {
+		t.Error("buildPod() head should inject GPI_POD_IP via downward API")
+	}
 }
 
 func TestBuildPod_WithGPU_NoNvidiaEnv(t *testing.T) {
@@ -287,7 +422,7 @@ func TestBuildPod_WithGPU_NoNvidiaEnv(t *testing.T) {
 		Region:       "test-context",
 	}
 
-	pod := buildPod("gpu-test-head", "default", spec, "head")
+	pod := buildPod(podParams{Name: "gpu-test-head", Namespace: "default", Spec: spec, Role: "head"})
 
 	// Should NOT have NVIDIA_VISIBLE_DEVICES=none when GPU is requested
 	for _, env := range pod.Spec.Containers[0].Env {
@@ -305,7 +440,7 @@ func TestBuildPod_RestartPolicy(t *testing.T) {
 		NumNodes:     1,
 	}
 
-	pod := buildPod("test-head", "default", spec, "head")
+	pod := buildPod(podParams{Name: "test-head", Namespace: "default", Spec: spec, Role: "head"})
 	if pod.Spec.RestartPolicy != corev1.RestartPolicyNever {
 		t.Errorf("RestartPolicy = %q, want %q", pod.Spec.RestartPolicy, corev1.RestartPolicyNever)
 	}
@@ -320,7 +455,7 @@ func TestBuildPod_LabelsComplete(t *testing.T) {
 		Tags:         map[string]string{"team": "ml"},
 	}
 
-	pod := buildPod("my-cluster-head", "default", spec, "head")
+	pod := buildPod(podParams{Name: "my-cluster-head", Namespace: "default", Spec: spec, Role: "head"})
 
 	if pod.Labels[labelClusterName] != "my-cluster" {
 		t.Errorf("Labels[%s] = %q, want %q", labelClusterName, pod.Labels[labelClusterName], "my-cluster")
@@ -344,7 +479,7 @@ func TestBuildPod_MemoryOnly(t *testing.T) {
 		NumNodes:     1,
 	}
 
-	pod := buildPod("small-head", "default", spec, "head")
+	pod := buildPod(podParams{Name: "small-head", Namespace: "default", Spec: spec, Role: "head"})
 
 	res := pod.Spec.Containers[0].Resources
 	cpuReq := res.Requests[corev1.ResourceCPU]
@@ -366,7 +501,7 @@ func TestBuildPod_GPUNvidiaResourceKey(t *testing.T) {
 		Region:       "test",
 	}
 
-	pod := buildPod("gpu-head", "default", spec, "head")
+	pod := buildPod(podParams{Name: "gpu-head", Namespace: "default", Spec: spec, Role: "head"})
 	res := pod.Spec.Containers[0].Resources
 	gpuReq := res.Requests[corev1.ResourceName("nvidia.com/gpu")]
 	if gpuReq.String() != "2" {
@@ -383,7 +518,7 @@ func TestBuildPod_TPUResourceKey(t *testing.T) {
 		Region:       "test",
 	}
 
-	pod := buildPod("tpu-head", "default", spec, "head")
+	pod := buildPod(podParams{Name: "tpu-head", Namespace: "default", Spec: spec, Role: "head"})
 	res := pod.Spec.Containers[0].Resources
 	tpuReq := res.Requests[corev1.ResourceName("google.com/tpu")]
 	if tpuReq.String() != "1" {
