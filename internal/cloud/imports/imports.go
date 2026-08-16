@@ -2,7 +2,7 @@
 //
 // Package imports is the single registration point for every supported cloud.
 // Blank-importing it runs each cloud provider's init(), which registers the
-// provider, its pricing fetcher and its catalog in one place. Consumers that
+// provider, its catalog metadata source and its pricing in one place. Consumers that
 // need clouds (the gpi binary, tests) import only this package.
 //
 // Regenerate after adding a cloud:
@@ -13,4 +13,5 @@ package imports
 import (
 	_ "github.com/acmestack/gpi/internal/cloud/aliyun"
 	_ "github.com/acmestack/gpi/internal/cloud/aws"
+	_ "github.com/acmestack/gpi/internal/cloud/kubernetes"
 )

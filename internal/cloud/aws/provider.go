@@ -17,6 +17,17 @@ var logger = logging.WithName("aws")
 // Cloud() and the cloud registry.
 const CloudName = "aws"
 
+func init() {
+	cloud.Register(Provider{})
+	cloud.RegisterFactory(CloudName, func(creds *cloud.Credentials) (cloud.Provider, error) {
+		return NewProvider(&Credentials{
+			AccessKeyID:     creds.AccessKeyID,
+			SecretAccessKey: creds.SecretAccessKey,
+			Region:          creds.Region,
+		}), nil
+	})
+}
+
 // Provider implements cloud.Provider for AWS EC2. It may be bound to explicit
 // credentials via NewProvider; otherwise it loads env/disk creds.
 type Provider struct {
@@ -563,15 +574,4 @@ func (p Provider) GetImage(ctx context.Context, region, platform string) (string
 		client.region = region
 	}
 	return client.GetImage(ctx, platform)
-}
-
-func init() {
-	cloud.Register(Provider{})
-	cloud.RegisterFactory(CloudName, func(creds *cloud.Credentials) (cloud.Provider, error) {
-		return NewProvider(&Credentials{
-			AccessKeyID:     creds.AccessKeyID,
-			SecretAccessKey: creds.SecretAccessKey,
-			Region:          creds.Region,
-		}), nil
-	})
 }

@@ -17,6 +17,16 @@ var logger = logging.WithName("aliyun")
 // Cloud() and the cloud registry.
 const CloudName = "aliyun"
 
+func init() {
+	cloud.Register(Provider{})
+	cloud.RegisterFactory(CloudName, func(creds *cloud.Credentials) (cloud.Provider, error) {
+		return NewProvider(&Credentials{
+			AccessKeyID:     creds.AccessKeyID,
+			AccessKeySecret: creds.SecretAccessKey,
+		}), nil
+	})
+}
+
 // Provider implements cloud.Provider for Alibaba Cloud ECS. It may be bound
 // to explicit credentials via NewProvider; otherwise it loads env/disk creds.
 type Provider struct {
@@ -448,14 +458,4 @@ func (p Provider) ensureSecurityGroup(ctx context.Context, client *Client, regio
 		}
 	}
 	return groupID, nil
-}
-
-func init() {
-	cloud.Register(Provider{})
-	cloud.RegisterFactory(CloudName, func(creds *cloud.Credentials) (cloud.Provider, error) {
-		return NewProvider(&Credentials{
-			AccessKeyID:     creds.AccessKeyID,
-			AccessKeySecret: creds.SecretAccessKey,
-		}), nil
-	})
 }

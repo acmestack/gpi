@@ -1,6 +1,6 @@
 # Gpi 架构设计文档
 
-- **文档版本**：v67（2026-08-15）
+- **文档版本**：v69（2026-08-15）
 - **module**：`github.com/acmestack/gpi`
 - **CLI**：`gpi`（二进制 `cmd/gpi`）
 - **目标**：参考 SkyPilot 模式，用 Go 重写实现多云算力调度（multi-cloud compute scheduling），对标 SkyPilot 的 launcher / optimizer / SkyServe / Sky Jobs / API server。
@@ -14,7 +14,7 @@
 | Catalog（实例规格） | `internal/cloud/catalog` | 元数据契约（对应 `sky/catalogs`）：`Source` 接口 + `Instance`/`Price` 类型 + 注册表，无静态数据；TTL Cache 运行时在 `internal/metacache` |
 | Pricing（实时价格） | `catalog.Source.FetchPrices` | 合并进 catalog 契约，价格按云 TTL 刷新（默认 10min），launch 前 `PricesForced` 强制刷新 |
 | 云注册聚合 | `internal/cloud/imports` | 所有云空白导入的唯一入口，`gpi` 与测试只依赖它；由 `gen.go` 自动生成并挂在 `make build` 前置，新云构建时自动带上 |
-| Cloud abstractions（`sky/clouds`） | `internal/cloud` + Provider 接口 | 一个 Provider 一个包、一个 struct 同时实现 Provider + `catalog.Source`，`cloud.Register` 自动注册元数据源；已实现 aliyun + aws |
+| Cloud abstractions（`sky/clouds`） | `internal/cloud` + Provider 接口 | 一个 Provider 一个包、一个 struct 同时实现 Provider + `catalog.Source`，`cloud.Register` 自动注册元数据源；已实现 aliyun + aws + kubernetes |
 | Cluster 生命周期 | `gpi status/start/stop/down` | 本地状态存储（对标 `~/.sky`） |
 | SkyServe | `gpi serve up/status/down` | 多副本服务部署，跨 region/cloud |
 | Sky Jobs + 调度 | `gpi jobs submit/status/run` | 内建 5 字段 cron + `@every/@daily` |
@@ -37,6 +37,7 @@ internal/
   cloud/                    # Provider 接口 + registry
     aliyun/                 # 阿里云：轻量 RPC 签名客户端 + ECS/VPC/SG
     aws/                    # AWS：SigV4 签名客户端 + EC2/VPC/Subnet/SG
+    kubernetes/             # Kubernetes：kubeconfig context 作为 region，Pod 作为实例
   backend/                  # 执行后端抽象：cloud / existing / docker / local + Manager 分派
   provisioner/              # launch/waitReady/runTask/exec/down/stop/start（SSH + Ray + gpilet）
   gpilet/                   # 节点指标采集（CPU/内存/磁盘/GPU/Ray）
@@ -111,6 +112,17 @@ Provider 若同时实现 `catalog.Source`（元数据契约，见 §5），`clou
 - 凭据：环境变量 `AWS_ACCESS_KEY_ID/SECRET_ACCESS_KEY`、`AWS_REGION`；或 `~/.aws/credentials`（支持 `AWS_PROFILE`）与 `~/.aws/config` region。
 - 端点：`https://ec2.{region}.amazonaws.com`。
 - 已实现：DescribeRegions/AvailabilityZones/Instances（含 NextToken 分页）、RunInstances（Min/MaxCount、spot 市场、BlockDevice 磁盘、TagSpecifications、ClientToken、UserData）、Start/Stop/Terminate、VPC/IGW/RouteTable/Route/Subnet 全套创建、默认 VPC 自动复用、SG 创建与 Ingress 授权、CreateKeyPair、DescribeImages（Canonical Ubuntu AMI，按 CreationDate 取最新 x86_64）。
+
+## 7.2 Kubernetes Provider 实现
+
+- 参考 SkyPilot 的 `sky/clouds/kubernetes.py`，将 K8s 作为 `cloud.Provider` 实现，与 aliyun/aws 同级。
+- **概念映射**：kubeconfig context = Region，Pod = Instance，Namespace = VPC，容器镜像 = Image。
+- **虚拟实例类型**：`{cpus}CPU--{memGB}GB` 或 `{cpus}CPU--{memGB}GB--{gpu}:{count}`（如 `4CPU--16GB--H100:1`）。
+- **GPU 检测**：扫描节点标签，自动匹配 GKE/GFD/Karpenter/CoreWeave/SkyPilot 等格式，生成 nodeAffinity 注入 Pod spec。
+- **Pod 生命周期**：`RunInstances` 创建 Pod（含 GPU resource request + nodeAffinity），`TerminateInstances` 强制删除（gracePeriod=0）。
+- **元数据**：`FetchSpecs` 动态查询节点 allocatable 资源，`FetchPrices` 返回 $0（自建集群无计费）。
+- **No-op 方法**：`CreateKeyPair`/`DeleteKeyPair`（用 RBAC）、`StopInstances`/`StartInstances`（Pod 不支持停止）、`CreateVSwitch`/`ListVSwitches`（K8s 网络自动分配）。
+- 依赖：`k8s.io/client-go`、`k8s.io/api`、`k8s.io/apimachinery`。
 
 ## 8. Provisioner 流程与 Ray 集群
 
@@ -448,6 +460,7 @@ gpi serve（internal/serve）—— 负责真的去云上拉起副本、记录 S
 ## 版本记录
 
 - **v67（2026-08-15）**：架构图精修——移除 Rate Limiting（gpi 不支持）；执行后端节点放大适配容器比例；云层丰富（aliyun ECS / aws EC2 / gcp(计划) / azure(计划) / 更多...，底层补 VPC/SG/Subnet/Spot/Pricing 信息节点）；新增节点层（Ray 集群 + gpilet agent）；扩展能力改为右侧纵栏；颜色对比增强（容器浅底色+子模块深色）。文档升版 v67。
+- **v69（2026-08-15）**：新增 Kubernetes 云后端——参考 SkyPilot 模式，将 K8s 作为 `cloud.Provider` 实现（与 aliyun/aws 同级），kubeconfig context = Region，Pod = Instance；虚拟实例类型 `4CPU--16GB--H100:1`；GPU 自动检测（GKE/GFD/Karpenter/CoreWeave/SkyPilot 标签格式）+ nodeAffinity；`catalog.Source` 动态查询节点资源，价格 $0；新增 `internal/cloud/kubernetes/` 包（provider/client/gpu/metadata），9 个单元测试通过。文档升版 v69。
 - **v65（2026-08-15）**：架构图从 mermaid 替换为 SVG——overview 改为分层带状布局（消除线交叉），模块分色、圆角细线、容器完整包含所有节点；新增扩展能力区（接入新云/扩展 Optimizer/自定义 Encoder）；横切能力紧跟接入层 REST API 右侧；英文版全部翻译。文档升版 v65。
 - **v63（2026-08-15）**：架构图从 mermaid 替换为 SVG（透明背景、模块分色、圆角细线、紧凑对齐），提升渲染一致性与视觉质量；同步中英文版。文档升版 v63。
 - **v62（2026-08-15）**：架构总览图与分层视图补充 logging 横切能力节点（结构化日志 + CLI 输出双通道）；包结构新增 `internal/logging`；修复根 README 指向 `examples/`、`openapi.json`、`deploy/k8s/README.md`、`LICENSE` 的错误 `../` 前缀。文档升版 v62。
