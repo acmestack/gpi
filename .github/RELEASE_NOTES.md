@@ -22,9 +22,9 @@
 
 - **Pluggable Optimizer**: built-in `cost` (default) and `time` metrics, plus lexicographic multi-metric strategies like `--optimizer cost,time`; extend via the `Metric` interface with custom metrics (latency / carbon / budget, etc.).
 
-- **多云置备**：已支持 **aliyun + aws**（零官方 SDK，标准库实现签名），完整实例生命周期（VPC/SG/KeyPair/镜像/弹性 IP）。
+- **多云置备**：已支持 **aliyun、aws、gcp、azure、kubernetes**（云厂商零官方 SDK，标准库实现签名；Kubernetes 原生 API），完整实例生命周期（VPC/SG/KeyPair/镜像/弹性 IP）。
 
-- **Multi-cloud provisioning**: **aliyun + aws** supported (zero official SDKs, signature via the standard library), full instance lifecycle (VPC/SG/KeyPair/image/elastic IP).
+- **Multi-cloud provisioning**: **aliyun, aws, gcp, azure, kubernetes** supported (zero official SDKs for cloud providers, signature via standard library; Kubernetes native API), full instance lifecycle (VPC/SG/KeyPair/image/elastic IP).
 
 - **节点 Agent（gpilet）**：跑在每个节点上，采集 CPU/内存/磁盘/GPU/Ray 状态（对标 skylet）。
 
@@ -77,6 +77,14 @@
 - 首个可运行版本，覆盖上述全部核心能力。
 
 - First runnable release covering all core features above.
+
+- 新增 Kubernetes cloud backend：kubeconfig context = Region，Pod = Instance，GPU 自动检测 + nodeAffinity。
+
+- Added Kubernetes cloud backend: kubeconfig context = Region, Pod = Instance, automatic GPU detection + nodeAffinity.
+
+- 新增 GCP Compute Engine provider（OAuth2 + REST API）和 Azure Resource Manager provider（Client Credentials + REST API）。
+
+- Added GCP Compute Engine provider (OAuth2 + REST API) and Azure Resource Manager provider (Client Credentials + REST API).
 
 - CLI：`gpi launch / optimize / status / cluster / serve / jobs / server` 等。
 
