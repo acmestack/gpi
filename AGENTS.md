@@ -92,4 +92,10 @@
 - `internal/buildinfo` 包的 `buildinfo.Version` 是唯一定义处，CLI（`gpi --version`）与 OpenAPI/Swagger（`internal/server/swagger.go` 的 `info.version`）都读取它，禁止各自硬编码。
 - `buildinfo.Version` 的默认值始终等于**最新已发布 tag（去掉 `v` 前缀）**；**每次发新版本时**：发布流程通过 ldflags 把当前 tag 注入二进制（release.yml 的 `-X github.com/acmestack/gpi/internal/buildinfo.Version=$VERSION`，Dockerfile 通过 `VERSION` build-arg + ldflags 注入），同时把 `internal/buildinfo/buildinfo.go` 的默认值改到新版本号。
 - 本地开发构建（`make build`）不带 ldflags，直接读默认值，无需额外处理。
+- **发布后必须执行**：每次发布新版本 tag 后，需立即执行以下步骤准备下一版本开发：
+  1. 基于最新 main 切出新分支（如 `chore/prepare-v0.0.2`）。
+  2. 在仓库根目录创建 `VERSION` 文件，写入下一版本号（如 `0.0.2`）。
+  3. 修改 `internal/buildinfo/buildinfo.go` 的 `Version` 默认值为下一版本号。
+  4. 更新 `.github/RELEASE_NOTES.md` 为下一版本的空白模板。
+  5. 提交、推送、合并到 main，然后删除临时分支。
 - 任何地方新增"版本号"展示/输出（CLI、API、文档、产物）都从 `internal/buildinfo` 读取，不要另写常量。

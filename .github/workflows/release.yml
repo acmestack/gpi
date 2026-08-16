@@ -11,6 +11,7 @@ permissions:
 jobs:
   release:
     name: Build & Release
+    if: github.repository == 'acmestack/gpi'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -53,6 +54,7 @@ jobs:
 
   docker:
     name: Publish Docker image
+    if: github.repository == 'acmestack/gpi'
     runs-on: ubuntu-latest
     permissions:
       contents: read

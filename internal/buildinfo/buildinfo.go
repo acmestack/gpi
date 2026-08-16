@@ -11,4 +11,4 @@ package buildinfo
 
 // Version is the current gpi version. Keep it equal to the latest release tag
 // (without the "v" prefix); CI/release workflows override it via -ldflags.
-var Version = "0.0.1"
+var Version = "0.0.2"
