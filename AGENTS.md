@@ -77,6 +77,15 @@
 - git commit message 一律使用英文。
 - commit message 根据当前变更的内容来写，内容可以简化，但必须体现变化的要点。
 
+## 新特性/新 Bug 开发流程（New Feature / Bug Workflow）
+
+开发新特性或修改 bug 时，严格按以下流程执行：
+
+1. **同步 main**：先 `git fetch upstream && git checkout main && git reset --hard upstream/main`，随后 `git push origin main --force-with-lease` 把最新 main 同步到 fork（origin）。
+2. **新建分支**：基于最新 main 创建全新分支，分支名体现特性/修复内容（如 `feature/<name>`、`fix/<name>`、`docs/<name>`）。
+3. **开发**：只在该分支上工作，不要直接改 main。
+4. **完成后**：展示 diff → 用户确认 → `git commit -S` → `git push origin <branch>` → 提 PR 合并到 upstream main。
+
 ## 版本发布（tag）
 
 - 版本号命名：语义化版本 `vMAJOR.MINOR.PATCH`（如 `v0.0.1`）。
