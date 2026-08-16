@@ -3,7 +3,7 @@
 - **文档版本**：v27（2026-08-15）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
-- **v28（2026-08-16）**：GCP/Azure/Kubernetes cloud Provider 实现；v0.0.1 发布 + tag 推送；v0.0.2 开发准备（VERSION + buildinfo bump）；release.yml fork 保护；AGENTS.md 新增 provider.go/client.go 文件结构规则与发布后流程。
+- **v28（2026-08-16）**：GCP/Azure/Kubernetes cloud Provider 实现；v0.0.1 发布 + tag 推送；v0.0.2 开发准备（VERSION + buildinfo bump）；release.yml fork 保护（注释化）；AGENTS.md 新增 provider.go/client.go 文件结构规则、发布后流程、新特性/Bug 开发流程。
 - **v27（2026-08-15）**：架构图 v65→v67——移除 Rate Limiting；执行后端节点放大；云层丰富（aliyun ECS / aws EC2 / gcp+azure 计划 / 更多 + VPC/SG/Subnet/Spot/Pricing）；新增节点层（Ray+gpilet）；扩展能力改右侧纵栏；颜色对比增强。架构文档 v66→v67。
 - **v26（2026-08-15）**：架构图 v64→v65——overview 从 LR 流程图改为分层带状布局（消除线交叉），横切能力紧跟 REST API 右侧，新增扩展能力区（接入新云/扩展 Optimizer/自定义 Encoder），容器尺寸修正（redis 不再溢出），英文版全部翻译；同时将架构图嵌入 README 中英文首页。
 - **v25（2026-08-15）**：架构图从 mermaid 替换为 SVG（透明背景、模块分色、圆角细线、紧凑对齐），中英文版同步，架构文档 v62→v63。分支 `fix-docs-links`。
@@ -65,6 +65,11 @@
 - **决策**：v0.0.2 开发准备——新建 `VERSION` 文件（0.0.2）、bump `buildinfo.Version`、AGENTS.md 新增「发布后必须执行」5 步流程。
 - **决策**：release.yml 加 `if: github.repository == 'acmestack/gpi'`，防止 fork 推 tag 触发 release/Docker push。
 - **分支规则**：新功能分支必须从最新 upstream/main 切出，命名 `feature/<name>`、`docs/<name>`、`fix/<name>`。
+
+### 2026-08-16（新特性/Bug 开发流程确认）
+
+- **决策**：用户明确新特性/新 bug 开发的标准流程——先回 main、`git fetch upstream && git reset --hard upstream/main`、`git push origin main --force-with-lease` 同步 fork，再基于最新 main 创建全新的 `feature/<name>`/`fix/<name>`/`docs/<name>` 分支，仅在该分支开发，完成后确认提交 push 提 PR。已写入 AGENTS.md「新特性/新 Bug 开发流程」。
+- **决策**：release.yml 的 `if: github.repository == 'acmestack/gpi'` 改为注释保留（fork 各自推 GHCR 不会覆盖，无需启用），并加注释说明。
 
 ### 2026-08-08（立项 · v1 骨架）
 
