@@ -39,7 +39,7 @@ func Execute() {
 func NewRootCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:     "gpi",
-		Short:   "gpi: multi-cloud compute scheduling",
+		Short:   "gpi: multi-cloud compute scheduler",
 		Version: buildinfo.Version,
 	}
 	// `gpi --version` prints the ASCII-art banner followed by the version.

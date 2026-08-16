@@ -1,7 +1,7 @@
 # Gpi 相对 SkyPilot 的能力增强
 
 - **文档版本**：v1（2026-08-08）
-- **定位**：Gpi 参考 [SkyPilot](https://skypilot.readthedocs.io) 的模式，用 Go 实现多云算力调度（multi-cloud compute scheduling）。本文档专门记录 Gpi 在对照 SkyPilot 已有能力之外所做的增强/差异化设计，供评估与演进参考。基线能力（任务 YAML → Optimizer → Provisioner → setup/run、SkyServe、Sky Jobs、API server 等）见 `gpi-architecture.md`。
+- **定位**：Gpi 参考 [SkyPilot](https://skypilot.readthedocs.io) 的模式，用 Go 实现多云算力调度（multi-cloud compute scheduler）。本文档专门记录 Gpi 在对照 SkyPilot 已有能力之外所做的增强/差异化设计，供评估与演进参考。基线能力（任务 YAML → Optimizer → Provisioner → setup/run、SkyServe、Sky Jobs、API server 等）见 `gpi-architecture.md`。
 
 ---
 
