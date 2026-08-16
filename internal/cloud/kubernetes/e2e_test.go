@@ -18,11 +18,13 @@ import (
 
 	"github.com/acmestack/gpi/internal/cloud"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
+	"k8s.io/utils/pointer"
 )
 
 // TestE2ELifecycle creates a single-node pod, lists it back, describes it,
@@ -254,7 +256,55 @@ func waitForPodRunning(t *testing.T, ctx context.Context, p Provider, region, id
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
+	dumpPodDiagnostics(t, ctx, region, id)
 	t.Fatalf("pod %s did not reach Running within 60s", id)
+}
+
+// dumpPodDiagnostics prints pod status, recent events and container logs for a
+// non-running pod, so a failed e2e leaves actionable information in CI logs.
+func dumpPodDiagnostics(t *testing.T, ctx context.Context, region, id string) {
+	t.Helper()
+	cs, err := clientFor(region)
+	if err != nil {
+		t.Logf("diagnostics: clientFor: %v", err)
+		return
+	}
+	ns := defaultNamespace
+	if c := LoadConfig(); c != nil {
+		ns = c.EffectiveNamespace()
+	}
+	pod, err := cs.CoreV1().Pods(ns).Get(ctx, id, metav1.GetOptions{})
+	if err != nil {
+		// id may be the pod name or UID; fall back to listing by prefix is
+		// complex here, so log the raw error.
+		t.Logf("diagnostics: get pod %s: %v", id, err)
+		return
+	}
+	t.Logf("diagnostics: pod %s phase=%s", pod.Name, pod.Status.Phase)
+	for _, c := range pod.Status.ContainerStatuses {
+		t.Logf("diagnostics: container %s ready=%v restart=%d state=%+v lastTerm=%+v",
+			c.Name, c.Ready, c.RestartCount, c.State, c.LastTerminationState)
+	}
+
+	// Recent events.
+	evs, _ := cs.CoreV1().Events(ns).List(ctx, metav1.ListOptions{
+		FieldSelector: "involvedObject.name=" + pod.Name,
+	})
+	for _, e := range evs.Items {
+		t.Logf("diagnostics: event %s: %s", e.Reason, e.Message)
+	}
+
+	// Container logs (last 40 lines) - ImagePullBackOff / CrashLoopBackOff
+	// causes show up here.
+	opts := &corev1.PodLogOptions{TailLines: pointer.Int64(40), Previous: false}
+	logs, _ := cs.CoreV1().Pods(ns).GetLogs(pod.Name, opts).Do(ctx).Raw()
+	if len(logs) > 0 {
+		t.Logf("diagnostics: pod logs:\n%s", logs)
+	}
+	prev := &corev1.PodLogOptions{TailLines: pointer.Int64(40), Previous: true}
+	if prevLogs, err := cs.CoreV1().Pods(ns).GetLogs(pod.Name, prev).Do(ctx).Raw(); err == nil && len(prevLogs) > 0 {
+		t.Logf("diagnostics: previous pod logs:\n%s", prevLogs)
+	}
 }
 
 func cloudLaunchSpec(prefix, region string) *cloud.LaunchSpec {

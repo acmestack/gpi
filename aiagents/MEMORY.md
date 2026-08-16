@@ -1,8 +1,9 @@
 # Gpi 项目沟通记录（MEMORY）
 
-- **文档版本**：v30（2026-08-17）
+- **文档版本**：v31（2026-08-17）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v31（2026-08-17）**：修复 e2e CI 失败——pod 60s 未 Running。根因与修复：① RunInstances 现等待 pod 到 Running（`waitPodRunning`，120s 超时，失败仅日志不终止）；② `Instance.ID` 从 pod UID 改为 pod 名（与 TerminateInstances 按名删除一致，连带修复 provisioner.Down 旧 bug）；③ 容器加 `ImagePullPolicy: IfNotPresent`；④ 加 Ray 标准 `/dev/shm` emptyDir（默认 64Mi 太小致 Ray object store 启动问题）；⑤ `waitPodIP` 超时 30s→90s；⑥ e2e 超时增加 `dumpPodDiagnostics`（pod phase/事件/容器日志，CI 可见诊断）。
 - **v30（2026-08-17）**：Kubernetes e2e 扩展覆盖 gpilet + Ray 真实运行——SkyPilot 式 bootstrap（head `ray start --head`、worker join、gpilet 常驻）；新增 `Dockerfile.gpi-base`（rayproject/ray + gpilet，默认节点镜像）；`kubernetes` config 段支持 context/namespace/image/gpilet/ray 端口配置；e2e 用 gpi-base 镜像 + `kind load docker-image`；release.yml 发布 gpi-base 镜像；`examples/gpi-config.yaml` 补 kubernetes 段；e2e.yml 镜像构建改 buildx + gha 缓存（build 前置早暴露）；kubernetes provider 函数参数收敛（`buildPod` 传 `podParams` struct、`podStartupCommand(cfg, role)` cfg 放第一位）。
 - **v29（2026-08-16）**：Kubernetes e2e 测试基础设施——`e2e_test.go`（build tag e2e，真实 kind 集群生命周期测试）+ `make e2e` + `.github/workflows/e2e.yml`（kind + 3 个 k8s 版本矩阵 v1.36.1/v1.35.5/v1.34.8，PR 强制门槛）。覆盖率检查本次暂缓。
 - **v28（2026-08-16）**：GCP/Azure/Kubernetes cloud Provider 实现；v0.0.1 发布 + tag 推送；v0.0.2 开发准备（VERSION + buildinfo bump）；release.yml fork 保护（注释化）；AGENTS.md 新增 provider.go/client.go 文件结构规则、发布后流程、新特性/Bug 开发流程。

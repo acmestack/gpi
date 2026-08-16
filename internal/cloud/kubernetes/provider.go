@@ -132,19 +132,32 @@ func (Provider) RunInstances(ctx context.Context, spec *cloud.LaunchSpec) ([]*cl
 			HeadAddr:  headAddr,
 			Cfg:       cfg,
 		})
-		created, err := cs.CoreV1().Pods(ns).Create(ctx, pod, metav1.CreateOptions{})
+		_, err = cs.CoreV1().Pods(ns).Create(ctx, pod, metav1.CreateOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("create pod %s: %w", podName, err)
 		}
 		logger.Info("pod created", "name", podName, "namespace", ns, "context", context)
 
+		// Wait for the pod to reach Running (image pull + container start can
+		// take a while on first CI run). Do not fail on timeout; the caller
+		// (provisioner/tests) observes the actual status.
+		podRunning := waitPodRunning(ctx, cs, ns, podName, 120*time.Second)
+		if !podRunning {
+			logger.Info("pod did not reach Running in time", "name", podName)
+		}
+
+		// ID is the pod name so TerminateInstances can delete by name (the
+		// pod UID is not accepted by the delete API).
 		inst := &cloud.Instance{
-			ID:           string(created.UID),
+			ID:           podName,
 			Name:         podName,
 			InstanceType: spec.InstanceType,
 			Region:       context,
 			Status:       cloud.StatusPending,
 			Tags:         spec.Tags,
+		}
+		if podRunning {
+			inst.Status = cloud.StatusRunning
 		}
 		instances = append(instances, inst)
 
@@ -157,9 +170,22 @@ func (Provider) RunInstances(ctx context.Context, spec *cloud.LaunchSpec) ([]*cl
 	return instances, nil
 }
 
+// waitPodRunning polls a pod until it reaches Running or a timeout elapses.
+func waitPodRunning(ctx context.Context, cs *kubernetes.Clientset, ns, name string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		pod, err := cs.CoreV1().Pods(ns).Get(ctx, name, metav1.GetOptions{})
+		if err == nil && pod.Status.Phase == corev1.PodRunning {
+			return true
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return false
+}
+
 // waitPodIP polls a pod until it has a PodIP or a short timeout elapses.
 func waitPodIP(ctx context.Context, cs *kubernetes.Clientset, ns, name string) string {
-	deadline := time.Now().Add(30 * time.Second)
+	deadline := time.Now().Add(90 * time.Second)
 	for time.Now().Before(deadline) {
 		pod, err := cs.CoreV1().Pods(ns).Get(ctx, name, metav1.GetOptions{})
 		if err == nil && pod.Status.PodIP != "" {
@@ -227,14 +253,20 @@ func buildPod(p podParams) *corev1.Pod {
 	}
 
 	containers := []corev1.Container{{
-		Name:  "ray-node",
-		Image: spec.ImageID,
+		Name:            "ray-node",
+		Image:           spec.ImageID,
+		ImagePullPolicy: corev1.PullIfNotPresent,
 		Resources: corev1.ResourceRequirements{
 			Requests: corev1.ResourceList{},
 			Limits:   corev1.ResourceList{},
 		},
 		Env:     envVars,
 		Command: podStartupCommand(cfg, role),
+		// Ray's object store needs a larger /dev/shm than Kubernetes'
+		// default (64Mi); mount an in-memory emptyDir (Ray standard setup).
+		VolumeMounts: []corev1.VolumeMount{
+			{Name: "dshm", MountPath: "/dev/shm"},
+		},
 	}}
 
 	res := containers[0].Resources
@@ -265,6 +297,11 @@ func buildPod(p podParams) *corev1.Pod {
 		Spec: corev1.PodSpec{
 			Containers:    containers,
 			RestartPolicy: corev1.RestartPolicyNever,
+			Volumes: []corev1.Volume{
+				{Name: "dshm", VolumeSource: corev1.VolumeSource{
+					EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumMemory},
+				}},
+			},
 		},
 	}
 
