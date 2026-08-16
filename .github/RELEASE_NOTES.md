@@ -1,7 +1,5 @@
 # gpi v0.0.1
 
-# gpi v0.0.1
-
 **gpi** 是一个轻量、自托管、多云算力调度器（multi-cloud compute scheduler），用 Go 编写、对标 SkyPilot。用一个任务 YAML 声明资源与运行命令，自动完成比价选型、跨云置备、环境准备与任务执行。
 
 **gpi** is a lightweight, self-hosted, multi-cloud compute scheduler written in Go, positioned against SkyPilot. Declare resources and run commands in a single task YAML; gpi handles price-based selection, cross-cloud provisioning, environment setup, and task execution automatically.

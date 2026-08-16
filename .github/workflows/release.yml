@@ -11,6 +11,10 @@ permissions:
 jobs:
   release:
     name: Build & Release
+    # Restrict to the upstream repo so a fork pushing the same tag cannot
+    # trigger an official release. Currently disabled: each fork pushes to its
+    # own GHCR namespace (ghcr.io/<owner>/gpi), so no overwrite risk.
+    # if: github.repository == 'acmestack/gpi'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -53,6 +57,10 @@ jobs:
 
   docker:
     name: Publish Docker image
+    # Restrict to the upstream repo so a fork pushing the same tag cannot
+    # overwrite the official GHCR image. Currently disabled: each fork pushes
+    # to its own GHCR namespace (ghcr.io/<owner>/gpi), so no overwrite risk.
+    # if: github.repository == 'acmestack/gpi'
     runs-on: ubuntu-latest
     permissions:
       contents: read
