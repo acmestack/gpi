@@ -1,6 +1,6 @@
 # Gpi Architecture Design Document
 
-- **Doc version**: v70 (2026-08-17)
+- **Doc version**: v71 (2026-08-17)
 - **module**: `github.com/acmestack/gpi`
 - **CLI**: `gpi` (binary `cmd/gpi`)
 - **Goal**: Following the SkyPilot model, build multi-cloud compute scheduler in Go, matching SkyPilot's launcher / optimizer / SkyServe / Sky Jobs / API server.
@@ -124,7 +124,8 @@ Caching ensures idempotency: `RunInstances` internally fills in ImageID, Securit
 - **Pod lifecycle**: `RunInstances` creates pods (with GPU resource request + nodeAffinity), `TerminateInstances` force-deletes (gracePeriod=0).
 - **Metadata**: `FetchSpecs` dynamically queries node allocatable resources, `FetchPrices` returns $0 (self-hosted clusters have no billing).
 - **No-op methods**: `CreateKeyPair`/`DeleteKeyPair` (uses RBAC), `StopInstances`/`StartInstances` (pods cannot be stopped), `CreateVSwitch`/`ListVSwitches` (K8s networking is automatic).
-- **kubernetes config section** (`$GPI_HOME/config.yaml` or project `.gpi.yaml`): `kubernetes: { context, namespace, image, gpilet_dir, gpilet_interval, ray_head_port, ray_dashboard_port }`, see `examples/gpi-config.yaml`.
+- **kubernetes config section** (`$GPI_HOME/config.yaml` or project `.gpi.yaml`): `kubernetes: { context, namespace, image, gpilet_dir, gpilet_interval, ray_head_port, ray_dashboard_port, pod_wait_timeout, pod_wait_retries }`, see `examples/gpi-config.yaml`.
+- **Node readiness wait**: `RunInstances` waits `pod_wait_retries` attempts of `pod_wait_timeout` seconds each for a pod to reach Running (default 3×120s); slow image pulls don't fail outright — only when retries are exhausted does it fail, cleaning up created pods.
 - Dependencies: `k8s.io/client-go`, `k8s.io/api`, `k8s.io/apimachinery`.
 
 ## 8. Provisioner flow & Ray cluster
@@ -462,6 +463,7 @@ The key naming style of response JSON is configurable, default **lower camelCase
 
 ## Version history
 
+- **v71 (2026-08-17)**: Kubernetes node readiness wait made configurable — `kubernetes` config section adds `pod_wait_timeout`/`pod_wait_retries`; `RunInstances` waits retries×timeout for a pod to reach Running, failing for real (and cleaning up created pods) only after retries are exhausted; `Instance.ID` unified to pod name (PodToInstance/DescribeInstances/TerminateInstances consistent). Research confirmed SkyPilot's K8s pod readiness wait is not configurable (enhancement in gpi-enhancements §4.1). Doc bumped to v71.
 - **v70 (2026-08-17)**: Kubernetes Provider enhanced — SkyPilot-style node bootstrap (pod start command auto-launches gpilet daemon + Ray: head `ray start --head`, workers join; multi-node sequential with head pod IP captured first); new `Dockerfile.gpi-base` default node image (rayproject/ray + gpilet, `ghcr.io/acmestack/gpi-base:latest`); `kubernetes` config section (context/namespace/image/gpilet/Ray ports); e2e now covers gpilet + Ray real runtime. Doc bumped to v70.
 - **v67 (2026-08-15)**: Architecture diagram refined — removed Rate Limiting (unsupported by gpi); enlarged execution backend nodes for proper container proportion; enriched Cloud layer (aliyun ECS / aws EC2 / gcp(planned) / azure(planned) / more..., plus VPC/SG/Subnet/Spot/Pricing info nodes); added Nodes layer (Ray cluster + gpilet agent); Extensibility moved to right sidebar; improved color contrast (light container + saturated child nodes). Doc bumped to v67.
 - **v69 (2026-08-15)**: Added Kubernetes cloud backend — following SkyPilot pattern, K8s implemented as `cloud.Provider` (same level as aliyun/aws), kubeconfig context = Region, Pod = Instance; virtual instance types `4CPU--16GB--H100:1`; automatic GPU detection (GKE/GFD/Karpenter/CoreWeave/SkyPilot label formats) + nodeAffinity; `catalog.Source` dynamically queries node resources, price = $0; new `internal/cloud/kubernetes/` package (provider/client/gpu/metadata), 9 unit tests passing. Doc bumped to v69.

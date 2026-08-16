@@ -69,12 +69,10 @@ func TestE2ELifecycle(t *testing.T) {
 		t.Fatalf("RunInstances returned %d instances, want 1", len(insts))
 	}
 	inst := insts[0]
-	if inst.Status != cloud.StatusPending {
-		t.Errorf("instance status = %q, want %q", inst.Status, cloud.StatusPending)
+	// RunInstances now waits for the pod to reach Running before returning.
+	if inst.Status != cloud.StatusRunning {
+		t.Errorf("instance status = %q, want %q", inst.Status, cloud.StatusRunning)
 	}
-
-	// Wait for the pod to reach Running.
-	waitForPodRunning(t, ctx, p, region, inst.ID)
 
 	// List by prefix.
 	listed, err := p.ListInstances(ctx, region, prefix)

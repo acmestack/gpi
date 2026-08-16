@@ -1,6 +1,6 @@
 # Gpi 架构设计文档
 
-- **文档版本**：v70（2026-08-17）
+- **文档版本**：v71（2026-08-17）
 - **module**：`github.com/acmestack/gpi`
 - **CLI**：`gpi`（二进制 `cmd/gpi`）
 - **目标**：参考 SkyPilot 模式，用 Go 重写实现多云算力调度（multi-cloud compute scheduler），对标 SkyPilot 的 launcher / optimizer / SkyServe / Sky Jobs / API server。
@@ -124,7 +124,8 @@ Provider 若同时实现 `catalog.Source`（元数据契约，见 §5），`clou
 - **Pod 生命周期**：`RunInstances` 创建 Pod（含 GPU resource request + nodeAffinity），`TerminateInstances` 强制删除（gracePeriod=0）。
 - **元数据**：`FetchSpecs` 动态查询节点 allocatable 资源，`FetchPrices` 返回 $0（自建集群无计费）。
 - **No-op 方法**：`CreateKeyPair`/`DeleteKeyPair`（用 RBAC）、`StopInstances`/`StartInstances`（Pod 不支持停止）、`CreateVSwitch`/`ListVSwitches`（K8s 网络自动分配）。
-- **kubernetes 配置段**（`$GPI_HOME/config.yaml` 或项目 `.gpi.yaml`）：`kubernetes: { context, namespace, image, gpilet_dir, gpilet_interval, ray_head_port, ray_dashboard_port }`，见 `examples/gpi-config.yaml`。
+- **kubernetes 配置段**（`$GPI_HOME/config.yaml` 或项目 `.gpi.yaml`）：`kubernetes: { context, namespace, image, gpilet_dir, gpilet_interval, ray_head_port, ray_dashboard_port, pod_wait_timeout, pod_wait_retries }`，见 `examples/gpi-config.yaml`。
+- **节点就绪等待**：`RunInstances` 按配置 `pod_wait_retries` 次 × `pod_wait_timeout` 秒等待 pod 到 Running（默认 3×120s），慢镜像拉取不失败，重试耗尽才真正失败并清理已创建的 pod。
 - 依赖：`k8s.io/client-go`、`k8s.io/api`、`k8s.io/apimachinery`。
 
 ## 8. Provisioner 流程与 Ray 集群
@@ -462,6 +463,7 @@ gpi serve（internal/serve）—— 负责真的去云上拉起副本、记录 S
 
 ## 版本记录
 
+- **v71（2026-08-17）**：Kubernetes 节点就绪等待可配置——`kubernetes` 配置段新增 `pod_wait_timeout`/`pod_wait_retries`，`RunInstances` 按 retries×timeout 等待 pod Running，重试耗尽才真失败并清理已建 pod；统一 `Instance.ID` 为 pod 名（PodToInstance/DescribeInstances/TerminateInstances 三处一致）；调研确认 SkyPilot K8s pod 就绪等待不可配置（增强见 gpi-enhancements §4.1）。文档升版 v71。
 - **v70（2026-08-17）**：Kubernetes Provider 增强——SkyPilot 式节点 bootstrap（Pod 启动命令自动拉起 gpilet 常驻 + Ray：head `ray start --head`、worker join，多节点串行 head 先建等 PodIP）；新增 `Dockerfile.gpi-base` 默认节点镜像（rayproject/ray + gpilet，`ghcr.io/acmestack/gpi-base:latest`）；`kubernetes` 配置段（context/namespace/image/gpilet/ray 端口）；e2e 覆盖 gpilet + Ray 真实运行。文档升版 v70。
 - **v67（2026-08-15）**：架构图精修——移除 Rate Limiting（gpi 不支持）；执行后端节点放大适配容器比例；云层丰富（aliyun ECS / aws EC2 / gcp(计划) / azure(计划) / 更多...，底层补 VPC/SG/Subnet/Spot/Pricing 信息节点）；新增节点层（Ray 集群 + gpilet agent）；扩展能力改为右侧纵栏；颜色对比增强（容器浅底色+子模块深色）。文档升版 v67。
 - **v69（2026-08-15）**：新增 Kubernetes 云后端——参考 SkyPilot 模式，将 K8s 作为 `cloud.Provider` 实现（与 aliyun/aws 同级），kubeconfig context = Region，Pod = Instance；虚拟实例类型 `4CPU--16GB--H100:1`；GPU 自动检测（GKE/GFD/Karpenter/CoreWeave/SkyPilot 标签格式）+ nodeAffinity；`catalog.Source` 动态查询节点资源，价格 $0；新增 `internal/cloud/kubernetes/` 包（provider/client/gpu/metadata），9 个单元测试通过。文档升版 v69。

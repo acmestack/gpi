@@ -50,6 +50,11 @@ const (
 	gpiletBin         = "/usr/local/bin/gpilet"
 	gpiletDir         = "/var/lib/gpilet"
 	gpiletIntervalSec = 10
+
+	// Pod readiness wait: per-attempt timeout and retry count used by
+	// RunInstances when waiting for a node pod to reach Running.
+	podWaitTimeout = 120 * time.Second
+	podWaitRetries = 3
 )
 
 func init() {
@@ -104,6 +109,16 @@ func (Provider) RunInstances(ctx context.Context, spec *cloud.LaunchSpec) ([]*cl
 	// start, letting workers join the Ray cluster (SkyPilot-style bootstrap).
 	var headAddr string
 	var instances []*cloud.Instance
+	var created []string
+
+	// Pod readiness wait is configurable (pod_wait_timeout / pod_wait_retries)
+	// so slow image pulls in CI don't fail a launch prematurely.
+	timeout := podWaitTimeout
+	retries := podWaitRetries
+	if cfg != nil {
+		timeout = cfg.EffectivePodWaitTimeout()
+		retries = cfg.EffectivePodWaitRetries()
+	}
 	for i := 0; i < spec.NumNodes; i++ {
 		role := "worker"
 		if i == 0 {
@@ -137,13 +152,15 @@ func (Provider) RunInstances(ctx context.Context, spec *cloud.LaunchSpec) ([]*cl
 			return nil, fmt.Errorf("create pod %s: %w", podName, err)
 		}
 		logger.Info("pod created", "name", podName, "namespace", ns, "context", context)
+		created = append(created, podName)
 
-		// Wait for the pod to reach Running (image pull + container start can
-		// take a while on first CI run). Do not fail on timeout; the caller
-		// (provisioner/tests) observes the actual status.
-		podRunning := waitPodRunning(ctx, cs, ns, podName, 120*time.Second)
-		if !podRunning {
-			logger.Info("pod did not reach Running in time", "name", podName)
+		// Wait for the pod to reach Running. Image pull + container start can
+		// take a while on first CI run, so retry (pod_wait_retries attempts of
+		// pod_wait_timeout each); if it still is not Running, fail for real and
+		// clean up the pods created so far.
+		if err := waitPodReady(ctx, cs, ns, podName, timeout, retries); err != nil {
+			cleanupPods(ctx, cs, ns, created)
+			return nil, err
 		}
 
 		// ID is the pod name so TerminateInstances can delete by name (the
@@ -153,21 +170,51 @@ func (Provider) RunInstances(ctx context.Context, spec *cloud.LaunchSpec) ([]*cl
 			Name:         podName,
 			InstanceType: spec.InstanceType,
 			Region:       context,
-			Status:       cloud.StatusPending,
+			Status:       cloud.StatusRunning,
 			Tags:         spec.Tags,
-		}
-		if podRunning {
-			inst.Status = cloud.StatusRunning
 		}
 		instances = append(instances, inst)
 
 		// Capture the head pod's IP so workers can join its Ray cluster.
 		if role == "head" && spec.NumNodes > 1 {
-			headAddr = waitPodIP(ctx, cs, ns, podName)
+			headAddr = waitPodIP(ctx, cs, ns, podName, timeout)
 			logger.Info("head pod ip", "name", podName, "ip", headAddr)
+			if headAddr == "" {
+				cleanupPods(ctx, cs, ns, created)
+				return nil, fmt.Errorf("head pod %s: no pod IP within %v", podName, timeout)
+			}
 		}
 	}
 	return instances, nil
+}
+
+// waitPodReady waits for a pod to reach Running, retrying up to retries
+// attempts of timeout each. It returns a descriptive error when the pod never
+// becomes Running.
+func waitPodReady(ctx context.Context, cs *kubernetes.Clientset, ns, name string, timeout time.Duration, retries int) error {
+	for attempt := 1; attempt <= retries; attempt++ {
+		if waitPodRunning(ctx, cs, ns, name, timeout) {
+			return nil
+		}
+		logger.Info("pod not running, retrying",
+			"name", name, "attempt", attempt, "of", retries, "timeout", timeout)
+	}
+	return fmt.Errorf("pod %s did not reach Running within %d attempts of %v", name, retries, timeout)
+}
+
+// cleanupPods deletes the given pods (best-effort), used when RunInstances
+// fails partway through a multi-node launch.
+func cleanupPods(ctx context.Context, cs *kubernetes.Clientset, ns string, names []string) {
+	grace := int64(0)
+	for _, n := range names {
+		if err := cs.CoreV1().Pods(ns).Delete(ctx, n, metav1.DeleteOptions{GracePeriodSeconds: &grace}); err != nil {
+			if !errors.IsNotFound(err) {
+				logger.Info("cleanup pod failed", "name", n, "err", err)
+			}
+			continue
+		}
+		logger.Info("pod cleaned up", "name", n)
+	}
 }
 
 // waitPodRunning polls a pod until it reaches Running or a timeout elapses.
@@ -183,9 +230,9 @@ func waitPodRunning(ctx context.Context, cs *kubernetes.Clientset, ns, name stri
 	return false
 }
 
-// waitPodIP polls a pod until it has a PodIP or a short timeout elapses.
-func waitPodIP(ctx context.Context, cs *kubernetes.Clientset, ns, name string) string {
-	deadline := time.Now().Add(90 * time.Second)
+// waitPodIP polls a pod until it has a PodIP or a timeout elapses.
+func waitPodIP(ctx context.Context, cs *kubernetes.Clientset, ns, name string, timeout time.Duration) string {
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		pod, err := cs.CoreV1().Pods(ns).Get(ctx, name, metav1.GetOptions{})
 		if err == nil && pod.Status.PodIP != "" {
@@ -433,7 +480,8 @@ func (Provider) ListInstances(ctx context.Context, region, namePrefix string) ([
 	return instances, nil
 }
 
-// DescribeInstances returns details for specific pod UIDs.
+// DescribeInstances returns details for the given pods, matched by pod name
+// (the Instance ID). UID matches are also accepted for backward compatibility.
 func (Provider) DescribeInstances(ctx context.Context, region string, ids []string) ([]*cloud.Instance, error) {
 	context := region
 	if context == "" {
@@ -449,7 +497,7 @@ func (Provider) DescribeInstances(ctx context.Context, region string, ids []stri
 	}
 	ns := defaultNamespace
 	var instances []*cloud.Instance
-	for _, uid := range ids {
+	for _, id := range ids {
 		pods, err := cs.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
 			LabelSelector: labelManagedBy + "=gpi",
 		})
@@ -457,7 +505,7 @@ func (Provider) DescribeInstances(ctx context.Context, region string, ids []stri
 			return nil, err
 		}
 		for _, pod := range pods.Items {
-			if string(pod.UID) == uid {
+			if pod.Name == id || string(pod.UID) == id {
 				instances = append(instances, podToInstance(&pod, context))
 				break
 			}
@@ -623,7 +671,7 @@ func podToInstance(pod *corev1.Pod, context string) *cloud.Instance {
 		status = cloud.StatusTerminated
 	}
 	inst := &cloud.Instance{
-		ID:           string(pod.UID),
+		ID:           pod.Name,
 		Name:         pod.Name,
 		InstanceType: pod.Labels[labelClusterName],
 		Region:       context,

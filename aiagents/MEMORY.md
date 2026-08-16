@@ -1,8 +1,9 @@
 # Gpi 项目沟通记录（MEMORY）
 
-- **文档版本**：v31（2026-08-17）
+- **文档版本**：v32（2026-08-17）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v32（2026-08-17）**：v31 基础上用户要求"超时/重试可配置 + 多重试、耗尽才真失败"。改动：① `kubernetes` 配置段新增 `pod_wait_timeout`（默认 120s）/`pod_wait_retries`（默认 3），`EffectivePodWaitTimeout/Retries` nil 安全；② `RunInstances` 改 `waitPodReady`（retries × timeout，全部失败返回 error）+ `cleanupPods`（失败清理已创建 pod）+ head IP 拿不到也真失败；③ `waitPodIP` 超时参数化；④ **统一 Instance.ID 为 pod 名**（podToInstance/DescribeInstances 原用 UID，与 RunInstances 的 podName、TerminateInstances 按名删三处不一致——这就是 CI 里"pod 已 Running 但测试仍超时"的根因）；⑤ TestE2ELifecycle 断言 pending→running（RunInstances 现已等待 Running）；⑥ **SkyPilot 调研**（skypilot-org/skypilot 源码）：其 K8s pod 就绪等待**不可配置**（调度用 `kubernetes.provision_timeout` 10-60s、运行等待硬编码 stall 600s；AWS/Azure 等 running 硬编码 600s、GCP 无超时），我们的 pod_wait_timeout/retries 是**对 SkyPilot 的增强**——等待时长与重试次数可配置；已写入 enhancements 文档 §4.1（zh/en）+ 架构文档 k8s 配置段。
 - **v31（2026-08-17）**：修复 e2e CI 失败——pod 60s 未 Running。根因与修复：① RunInstances 现等待 pod 到 Running（`waitPodRunning`，120s 超时，失败仅日志不终止）；② `Instance.ID` 从 pod UID 改为 pod 名（与 TerminateInstances 按名删除一致，连带修复 provisioner.Down 旧 bug）；③ 容器加 `ImagePullPolicy: IfNotPresent`；④ 加 Ray 标准 `/dev/shm` emptyDir（默认 64Mi 太小致 Ray object store 启动问题）；⑤ `waitPodIP` 超时 30s→90s；⑥ e2e 超时增加 `dumpPodDiagnostics`（pod phase/事件/容器日志，CI 可见诊断）。
 - **v30（2026-08-17）**：Kubernetes e2e 扩展覆盖 gpilet + Ray 真实运行——SkyPilot 式 bootstrap（head `ray start --head`、worker join、gpilet 常驻）；新增 `Dockerfile.gpi-base`（rayproject/ray + gpilet，默认节点镜像）；`kubernetes` config 段支持 context/namespace/image/gpilet/ray 端口配置；e2e 用 gpi-base 镜像 + `kind load docker-image`；release.yml 发布 gpi-base 镜像；`examples/gpi-config.yaml` 补 kubernetes 段；e2e.yml 镜像构建改 buildx + gha 缓存（build 前置早暴露）；kubernetes provider 函数参数收敛（`buildPod` 传 `podParams` struct、`podStartupCommand(cfg, role)` cfg 放第一位）。
 - **v29（2026-08-16）**：Kubernetes e2e 测试基础设施——`e2e_test.go`（build tag e2e，真实 kind 集群生命周期测试）+ `make e2e` + `.github/workflows/e2e.yml`（kind + 3 个 k8s 版本矩阵 v1.36.1/v1.35.5/v1.34.8，PR 强制门槛）。覆盖率检查本次暂缓。

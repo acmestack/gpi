@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/acmestack/gpi/internal/cloud"
 	"github.com/acmestack/gpi/internal/config"
@@ -117,8 +118,8 @@ func TestPodToInstance(t *testing.T) {
 
 	inst := podToInstance(pod, "test-context")
 
-	if inst.ID != "abc-123" {
-		t.Errorf("podToInstance().ID = %q, want %q", inst.ID, "abc-123")
+	if inst.ID != "test-cluster-head" {
+		t.Errorf("podToInstance().ID = %q, want %q", inst.ID, "test-cluster-head")
 	}
 	if inst.Name != "test-cluster-head" {
 		t.Errorf("podToInstance().Name = %q, want %q", inst.Name, "test-cluster-head")
@@ -319,6 +320,18 @@ func TestConfig_EffectiveDefaults(t *testing.T) {
 	}
 	if got := (&Config{}).EffectiveRayHeadPort(); got != rayHeadPort {
 		t.Errorf("empty EffectiveRayHeadPort = %d, want %d", got, rayHeadPort)
+	}
+	if got := (&Config{}).EffectivePodWaitTimeout(); got != podWaitTimeout {
+		t.Errorf("empty EffectivePodWaitTimeout = %v, want %v", got, podWaitTimeout)
+	}
+	if got := (&Config{PodWaitTimeout: 300}).EffectivePodWaitTimeout(); got != 300*time.Second {
+		t.Errorf("EffectivePodWaitTimeout = %v, want 300s", got)
+	}
+	if got := (&Config{}).EffectivePodWaitRetries(); got != podWaitRetries {
+		t.Errorf("empty EffectivePodWaitRetries = %d, want %d", got, podWaitRetries)
+	}
+	if got := (&Config{PodWaitRetries: 5}).EffectivePodWaitRetries(); got != 5 {
+		t.Errorf("EffectivePodWaitRetries = %d, want 5", got)
 	}
 }
 

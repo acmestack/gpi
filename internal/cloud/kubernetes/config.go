@@ -1,6 +1,8 @@
 package kubernetes
 
 import (
+	"time"
+
 	"github.com/acmestack/gpi/internal/config"
 )
 
@@ -23,6 +25,12 @@ type Config struct {
 	RayHeadPort int `yaml:"ray_head_port"`
 	// RayDashboardPort is the Ray dashboard port.
 	RayDashboardPort int `yaml:"ray_dashboard_port"`
+	// PodWaitTimeout is the per-attempt timeout (seconds) to wait for a node
+	// pod to reach Running (e.g. image pull / container start).
+	PodWaitTimeout int `yaml:"pod_wait_timeout"`
+	// PodWaitRetries is how many attempts (each up to PodWaitTimeout) to wait
+	// for a node pod to reach Running before RunInstances fails.
+	PodWaitRetries int `yaml:"pod_wait_retries"`
 }
 
 // LoadConfig returns the merged "kubernetes" config section, or nil when unset.
@@ -72,4 +80,22 @@ func (c *Config) EffectiveRayDashboardPort() int {
 		return rayDashboardPort
 	}
 	return c.RayDashboardPort
+}
+
+// EffectivePodWaitTimeout returns the configured per-attempt pod wait timeout
+// or the default.
+func (c *Config) EffectivePodWaitTimeout() time.Duration {
+	if c == nil || c.PodWaitTimeout <= 0 {
+		return podWaitTimeout
+	}
+	return time.Duration(c.PodWaitTimeout) * time.Second
+}
+
+// EffectivePodWaitRetries returns the configured pod wait retry count or the
+// default.
+func (c *Config) EffectivePodWaitRetries() int {
+	if c == nil || c.PodWaitRetries <= 0 {
+		return podWaitRetries
+	}
+	return c.PodWaitRetries
 }

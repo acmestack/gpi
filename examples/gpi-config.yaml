@@ -41,6 +41,11 @@ kubernetes:
   # Ray cluster ports.
   ray_head_port: 6379
   ray_dashboard_port: 8265
+  # Node readiness wait: RunInstances waits up to pod_wait_timeout seconds per
+  # attempt (image pull + container start can be slow on first run), retrying
+  # pod_wait_retries times before failing the launch.
+  pod_wait_timeout: 120
+  pod_wait_retries: 3
 
 # --- Global defaults (used when the CLI flag is not explicitly passed) ---
 
