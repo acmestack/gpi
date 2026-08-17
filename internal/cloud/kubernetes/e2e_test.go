@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -173,7 +174,15 @@ func TestE2EGpiletAndRay(t *testing.T) {
 	// `ray start` after the container starts, and the worker needs time to
 	// join, so poll `ray status` until the cluster shows the expected nodes.
 	headPod := insts[0].Name
-	rayStatus := pollRayStatus(t, ctx, cs, headPod, 120*time.Second)
+	headPodObj, err := cs.CoreV1().Pods(defaultNamespace).Get(ctx, headPod, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get head pod %s: %v", headPod, err)
+	}
+	if headPodObj.Status.PodIP == "" {
+		t.Fatalf("head pod %s has no PodIP", headPod)
+	}
+	headAddr := headPodObj.Status.PodIP + ":" + strconv.Itoa(rayHeadPort)
+	rayStatus := pollRayStatus(t, ctx, cs, headPod, headAddr, 120*time.Second)
 	if !strings.Contains(rayStatus, "Ray runtime is running") {
 		dumpPodDiagnostics(t, ctx, region, headPod)
 		t.Errorf("head ray status did not report a running runtime:\n%s", rayStatus)
@@ -181,6 +190,10 @@ func TestE2EGpiletAndRay(t *testing.T) {
 	if !strings.Contains(rayStatus, "2 nodes") && !strings.Contains(rayStatus, "1 active, 1 pending") {
 		dumpPodDiagnostics(t, ctx, region, headPod)
 		dumpPodDiagnostics(t, ctx, region, insts[1].Name)
+		// The worker retries `ray start --address=...`; its stdout shows the
+		// join error. Log the last worker logs so the cause is actionable.
+		workerLog := execInPod(t, ctx, cs, insts[1].Name, "tail -n 30 /tmp/ray/session_latest/logs/worker_start.log 2>/dev/null || tail -n 30 /tmp/ray/session_latest/logs/raylet.out 2>/dev/null || echo 'no ray logs'")
+		t.Logf("worker ray join logs:\n%s", workerLog)
 		t.Errorf("head ray status does not show the worker joined:\n%s", rayStatus)
 	}
 
@@ -217,14 +230,15 @@ func TestE2EGpiletAndRay(t *testing.T) {
 	}
 }
 
-// pollRayStatus repeatedly runs `ray status` in the head pod until it reports
-// a running runtime and the expected node count, or a timeout elapses. It
-// returns the last output for diagnostics.
-func pollRayStatus(t *testing.T, ctx context.Context, cs *kubernetes.Clientset, podName string, timeout time.Duration) string {
+// pollRayStatus repeatedly runs `ray status --address=<headAddr>` in the head
+// pod until it reports a running runtime and the expected node count, or a
+// timeout elapses. It returns the last output for diagnostics.
+func pollRayStatus(t *testing.T, ctx context.Context, cs *kubernetes.Clientset, podName, headAddr string, timeout time.Duration) string {
 	t.Helper()
-	// --address=auto reads the head's current-cluster file written by
-	// `ray start`, avoiding address auto-detection flakiness in a fresh shell.
-	cmd := "ray status --address=auto"
+	// Query the GCS directly via the head pod IP rather than relying on
+	// address auto-detection (current-cluster file) in a fresh exec shell.
+	// The instance's PrivateIP is the head pod's IP (podToInstance sets it).
+	cmd := "ray status --address=" + headAddr
 	deadline := time.Now().Add(timeout)
 	var last string
 	for time.Now().Before(deadline) {

@@ -393,11 +393,15 @@ func podStartupCommand(cfg *Config, role string) []string {
 			" --dashboard-port=" + strconv.Itoa(dashPort) +
 			" --disable-usage-stats --node-ip-address=$GPI_POD_IP"
 	} else {
+		// The worker retries until the head's GCS is reachable (Ray needs a
+		// moment after the head pod starts). KubeRay uses the same pattern
+		// with an init container + `ray health-check`.
 		rayStart = "until ray start --address=$GPI_HEAD_ADDR:" + strconv.Itoa(headPort) +
-			" --disable-usage-stats; do sleep 2; done"
+			" --disable-usage-stats; do echo \"worker join failed, retrying\"; sleep 2; done"
 	}
 
 	script := "set -e\n" +
+		"ulimit -n 65536\n" +
 		"nohup " + startGpilet + " > /var/log/gpilet.log 2>&1 &\n" +
 		rayStart + "\n" +
 		"tail -f /dev/null\n"
