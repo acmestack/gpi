@@ -169,8 +169,11 @@ func TestE2EGpiletAndRay(t *testing.T) {
 
 	// Head must show a 2-node Ray cluster (head + worker). The first
 	// instance returned by RunInstances is the head; the rest are workers.
+	// Pod Running does not imply Ray is ready: the bootstrap script runs
+	// `ray start` after the container starts, and the worker needs time to
+	// join, so poll `ray status` until the cluster shows the expected nodes.
 	headPod := insts[0].Name
-	rayStatus := execInPod(t, ctx, cs, headPod, "ray status")
+	rayStatus := pollRayStatus(t, ctx, cs, headPod, 120*time.Second)
 	if !strings.Contains(rayStatus, "Ray runtime is running") {
 		t.Errorf("head ray status did not report a running runtime:\n%s", rayStatus)
 	}
@@ -178,20 +181,56 @@ func TestE2EGpiletAndRay(t *testing.T) {
 		t.Errorf("head ray status does not show the worker joined:\n%s", rayStatus)
 	}
 
-	// gpilet must be running inside both pods.
+	// gpilet must be running inside both pods (nohup background start, so
+	// poll briefly in case it is still spawning).
 	pods := []string{headPod, insts[1].Name}
 	for _, pod := range pods {
-		out := execInPod(t, ctx, cs, pod, "pgrep -f /usr/local/bin/gpilet")
-		if strings.TrimSpace(out) == "" {
+		var pout string
+		pdeadline := time.Now().Add(60 * time.Second)
+		for time.Now().Before(pdeadline) {
+			pout = execInPod(t, ctx, cs, pod, "pgrep -f /usr/local/bin/gpilet")
+			if strings.TrimSpace(pout) != "" {
+				break
+			}
+			time.Sleep(2 * time.Second)
+		}
+		if strings.TrimSpace(pout) == "" {
 			t.Errorf("gpilet process not found in pod %s", pod)
 		}
 	}
 
 	// gpilet must have written its status file (default interval 10s).
-	out := execInPod(t, ctx, cs, headPod, "test -f /var/lib/gpilet/status.json && cat /var/lib/gpilet/status.json")
-	if strings.TrimSpace(out) == "" {
+	var statusOut string
+	statusDeadline := time.Now().Add(60 * time.Second)
+	for time.Now().Before(statusDeadline) {
+		statusOut = execInPod(t, ctx, cs, headPod, "test -f /var/lib/gpilet/status.json && cat /var/lib/gpilet/status.json")
+		if strings.TrimSpace(statusOut) != "" {
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+	if strings.TrimSpace(statusOut) == "" {
 		t.Errorf("gpilet status.json not found in pod %s", headPod)
 	}
+}
+
+// pollRayStatus repeatedly runs `ray status` in the head pod until it reports
+// a running runtime and the expected node count, or a timeout elapses. It
+// returns the last output for diagnostics.
+func pollRayStatus(t *testing.T, ctx context.Context, cs *kubernetes.Clientset, podName string, timeout time.Duration) string {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var last string
+	for time.Now().Before(deadline) {
+		out := execInPod(t, ctx, cs, podName, "ray status")
+		last = out
+		if strings.Contains(out, "Ray runtime is running") &&
+			(strings.Contains(out, "2 nodes") || strings.Contains(out, "1 active, 1 pending")) {
+			return out
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return last
 }
 
 // execInPod runs a command in the first container of a pod and returns stdout.
@@ -213,7 +252,8 @@ func execInPod(t *testing.T, ctx context.Context, cs *kubernetes.Clientset, podN
 
 	exec, err := remotecommand.NewSPDYExecutor(cfg, "POST", req.URL())
 	if err != nil {
-		t.Fatalf("exec %s: %v", podName, err)
+		t.Logf("exec %s: %v", podName, err)
+		return ""
 	}
 	var buf bytes.Buffer
 	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
@@ -221,7 +261,9 @@ func execInPod(t *testing.T, ctx context.Context, cs *kubernetes.Clientset, podN
 		Stderr: &buf,
 	})
 	if err != nil {
-		t.Fatalf("exec %s (%q): %v", podName, cmd, err)
+		// A non-zero exit (e.g. `ray status` before the runtime is up) is not
+		// a test failure by itself; callers decide what to assert on.
+		t.Logf("exec %s (%q) failed: %v", podName, cmd, err)
 	}
 	return buf.String()
 }
