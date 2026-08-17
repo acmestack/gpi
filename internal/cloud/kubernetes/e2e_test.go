@@ -175,9 +175,12 @@ func TestE2EGpiletAndRay(t *testing.T) {
 	headPod := insts[0].Name
 	rayStatus := pollRayStatus(t, ctx, cs, headPod, 120*time.Second)
 	if !strings.Contains(rayStatus, "Ray runtime is running") {
+		dumpPodDiagnostics(t, ctx, region, headPod)
 		t.Errorf("head ray status did not report a running runtime:\n%s", rayStatus)
 	}
 	if !strings.Contains(rayStatus, "2 nodes") && !strings.Contains(rayStatus, "1 active, 1 pending") {
+		dumpPodDiagnostics(t, ctx, region, headPod)
+		dumpPodDiagnostics(t, ctx, region, insts[1].Name)
 		t.Errorf("head ray status does not show the worker joined:\n%s", rayStatus)
 	}
 
@@ -219,10 +222,13 @@ func TestE2EGpiletAndRay(t *testing.T) {
 // returns the last output for diagnostics.
 func pollRayStatus(t *testing.T, ctx context.Context, cs *kubernetes.Clientset, podName string, timeout time.Duration) string {
 	t.Helper()
+	// --address=auto reads the head's current-cluster file written by
+	// `ray start`, avoiding address auto-detection flakiness in a fresh shell.
+	cmd := "ray status --address=auto"
 	deadline := time.Now().Add(timeout)
 	var last string
 	for time.Now().Before(deadline) {
-		out := execInPod(t, ctx, cs, podName, "ray status")
+		out := execInPod(t, ctx, cs, podName, cmd)
 		last = out
 		if strings.Contains(out, "Ray runtime is running") &&
 			(strings.Contains(out, "2 nodes") || strings.Contains(out, "1 active, 1 pending")) {
@@ -255,17 +261,18 @@ func execInPod(t *testing.T, ctx context.Context, cs *kubernetes.Clientset, podN
 		t.Logf("exec %s: %v", podName, err)
 		return ""
 	}
-	var buf bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
-		Stdout: &buf,
-		Stderr: &buf,
+		Stdout: &stdout,
+		Stderr: &stderr,
 	})
 	if err != nil {
 		// A non-zero exit (e.g. `ray status` before the runtime is up) is not
-		// a test failure by itself; callers decide what to assert on.
-		t.Logf("exec %s (%q) failed: %v", podName, cmd, err)
+		// a test failure by itself; callers decide what to assert on. Log the
+		// stderr so the cause is visible in CI output.
+		t.Logf("exec %s (%q) failed: %v; stderr: %s", podName, cmd, err, stderr.String())
 	}
-	return buf.String()
+	return stdout.String()
 }
 
 // restConfig returns the REST config for the current context (used by exec).
