@@ -220,10 +220,31 @@ func TestE2EGpiletAndRay(t *testing.T) {
 		}
 	}
 
+	// Count registered nodes from `ray status`: every Active node shows as a
+	// "node_<hex>" line. A worker can register with the GCS and then take a
+	// moment to become schedulable, so wait for BOTH nodes to appear before
+	// running the functional task.
+	activeNodes := func() int {
+		out := execInPod(t, ctx, cs, headPod, "ray status --address="+headAddr+" 2>&1")
+		n := 0
+		for _, line := range strings.Split(out, "\n") {
+			if strings.Contains(line, "node_") {
+				n++
+			}
+		}
+		return n
+	}
+	regDeadline := time.Now().Add(90 * time.Second)
+	for activeNodes() < 2 && time.Now().Before(regDeadline) {
+		time.Sleep(2 * time.Second)
+	}
+	t.Logf("ray status reports %d registered node(s)", activeNodes())
+
 	// Run a REAL distributed Ray task and require it to execute on BOTH
 	// nodes. `ray status` + a raylet process only prove the cluster is up;
 	// scheduling a @ray.remote function exercises the driver, the scheduler,
-	// the object store and worker registration end to end.
+	// the object store and worker registration end to end. Retry a few times
+	// because a freshly-joined worker may not yet be schedulable.
 	taskScript := `cat > /tmp/ray_dist_task.py <<'PYEOF'
 import ray
 ray.init(address="` + headAddr + `")
@@ -238,24 +259,25 @@ print("NODE_IPS=" + ",".join(sorted(set(addrs))))
 PYEOF
 python /tmp/ray_dist_task.py`
 	var taskOut string
-	taskDeadline := time.Now().Add(90 * time.Second)
-	for time.Now().Before(taskDeadline) {
-		taskOut = execInPod(t, ctx, cs, headPod, taskScript)
-		if strings.Contains(taskOut, "NODE_IPS=") {
-			break
-		}
-		time.Sleep(2 * time.Second)
-	}
 	nodes := map[string]bool{}
-	if _, after, ok := strings.Cut(taskOut, "NODE_IPS="); ok {
-		if nl := strings.IndexByte(after, '\n'); nl >= 0 {
-			after = after[:nl]
-		}
-		for _, ip := range strings.Split(after, ",") {
-			if ip = strings.TrimSpace(ip); ip != "" {
-				nodes[ip] = true
+	for attempt := 1; attempt <= 4; attempt++ {
+		taskOut = execInPod(t, ctx, cs, headPod, taskScript)
+		nodes = map[string]bool{}
+		if _, after, ok := strings.Cut(taskOut, "NODE_IPS="); ok {
+			if nl := strings.IndexByte(after, '\n'); nl >= 0 {
+				after = after[:nl]
+			}
+			for _, ip := range strings.Split(after, ",") {
+				if ip = strings.TrimSpace(ip); ip != "" {
+					nodes[ip] = true
+				}
 			}
 		}
+		if len(nodes) >= 2 {
+			break
+		}
+		t.Logf("distributed Ray task attempt %d: %d node(s) %v, retrying in 5s", attempt, len(nodes), nodes)
+		time.Sleep(5 * time.Second)
 	}
 	if len(nodes) < 2 {
 		dumpPodDiagnostics(t, ctx, region, headPod)
