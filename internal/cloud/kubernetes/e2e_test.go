@@ -272,21 +272,27 @@ python /tmp/ray_nodes.py`
 	// prints each node's registered address/resources so a worker that
 	// registered under a wrong address is visible in the failure output.
 	// Retry a few times because a freshly-joined worker may not yet be
-	// schedulable. The remote task MUST be marked SPREAD: Ray's default
-	// scheduler PACKs CPU-only tasks onto a single node (observed: all 8
-	// tasks landing on head, then all 8 on worker across attempts), so
-	// without an explicit strategy the "ran on 2 nodes" assertion can never
-	// pass even with a perfectly healthy cluster.
+	// schedulable. Node distribution is forced with a SPREAD placement group
+	// with one {"CPU": 1} bundle per node, binding one task to each bundle:
+	// Ray's task-level scheduling strategies are unreliable here (observed:
+	// `@ray.remote(scheduling_strategy="SPREAD")` still PACKed all 8 tasks
+	// onto one node), but placement-group bundle placement is deterministic.
 	taskScript := `cat > /tmp/ray_dist_task.py <<'PYEOF'
 import ray
 ray.init(address="` + headAddr + `")
 
-@ray.remote(scheduling_strategy="SPREAD")
+pg = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}], strategy="SPREAD")
+ray.get(pg.ready(), timeout=30)
+
+@ray.remote
 def node_ip():
     import ray.util
     return ray.util.get_node_ip_address()
 
-addrs = ray.get([node_ip.remote() for _ in range(8)])
+addrs = ray.get([
+    node_ip.options(placement_group=pg, placement_group_bundle_index=i).remote()
+    for i in range(2)
+])
 print("NODE_IPS=" + ",".join(sorted(set(addrs))))
 
 alive = 0
