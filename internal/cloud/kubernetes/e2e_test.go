@@ -183,18 +183,15 @@ func TestE2EGpiletAndRay(t *testing.T) {
 	}
 	headAddr := headPodObj.Status.PodIP + ":" + strconv.Itoa(rayHeadPort)
 	rayStatus := pollRayStatus(t, ctx, cs, headPod, headAddr, 120*time.Second)
-	if !strings.Contains(rayStatus, "Autoscaler status") && !strings.Contains(rayStatus, "Node status") {
+	// A "Node status" block proves `ray status` reached the GCS and the
+	// runtime is up. (The node lines are labeled "Healthy:" or "Active:"
+	// depending on the Ray version, so don't match on that keyword.) The
+	// two-node check is done below via a raylet process in both pods.
+	if !strings.Contains(rayStatus, "Node status") {
 		dumpPodDiagnostics(t, ctx, region, headPod)
-		t.Errorf("head ray status did not report a running runtime:\n%s", rayStatus)
-	}
-	if !strings.Contains(rayStatus, "Healthy") {
-		dumpPodDiagnostics(t, ctx, region, headPod)
-		dumpPodDiagnostics(t, ctx, region, insts[1].Name)
-		// The worker retries `ray start --address=...`; its stdout shows the
-		// join error. Log the last worker logs so the cause is actionable.
-		workerLog := execInPod(t, ctx, cs, insts[1].Name, "tail -n 30 /tmp/ray/session_latest/logs/worker_start.log 2>/dev/null || tail -n 30 /tmp/ray/session_latest/logs/raylet.out 2>/dev/null || echo 'no ray logs'")
-		t.Logf("worker ray join logs:\n%s", workerLog)
-		t.Errorf("head ray status does not show a healthy cluster:\n%s", rayStatus)
+		t.Errorf("head ray status did not report the cluster:\n%s", rayStatus)
+	} else {
+		t.Logf("head ray status:\n%s", rayStatus)
 	}
 
 	// A 2-node cluster means a raylet process is running in BOTH pods (head
@@ -210,6 +207,13 @@ func TestE2EGpiletAndRay(t *testing.T) {
 			time.Sleep(2 * time.Second)
 		}
 		if strings.TrimSpace(rl) == "" {
+			if pod != headPod {
+				dumpPodDiagnostics(t, ctx, region, pod)
+				// The worker retries `ray start --address=...`; its stdout
+				// shows the join error. Log the last worker logs.
+				workerLog := execInPod(t, ctx, cs, pod, "tail -n 30 /tmp/ray/session_latest/logs/worker_start.log 2>/dev/null || tail -n 30 /tmp/ray/session_latest/logs/raylet.out 2>/dev/null || echo 'no ray logs'")
+				t.Logf("worker ray join logs:\n%s", workerLog)
+			}
 			t.Errorf("raylet process not found in pod %s (worker did not join the Ray cluster)", pod)
 		}
 	}
@@ -247,28 +251,50 @@ func TestE2EGpiletAndRay(t *testing.T) {
 	}
 }
 
-// pollRayStatus repeatedly runs `ray status --address=<headAddr>` in the head
-// pod until it reports a running runtime and the expected node count, or a
-// timeout elapses. It returns the last output for diagnostics.
+// pollRayStatus repeatedly runs `ray status` in the head pod until it reaches
+// the GCS and reports a running runtime, or a timeout elapses. The GCS may
+// bind either the head pod IP (--node-ip-address) or loopback depending on
+// Ray's interface detection, so both explicit forms are tried. Ray CLI
+// failures (e.g. "Failed to connect to GCS ... within 5 seconds") go to
+// stderr, which execInPod merges into the returned output. It returns the
+// last output for diagnostics.
 func pollRayStatus(t *testing.T, ctx context.Context, cs *kubernetes.Clientset, podName, headAddr string, timeout time.Duration) string {
 	t.Helper()
-	// Query the GCS directly via the head pod IP rather than relying on
-	// address auto-detection (current-cluster file) in a fresh exec shell.
-	// The instance's PrivateIP is the head pod's IP (podToInstance sets it).
-	cmd := "ray status --address=" + headAddr
+	_, headPort, _ := strings.Cut(headAddr, ":")
+	cmd := "ray status --address=" + headAddr + " 2>&1; echo '=== 127.0.0.1 ==='; ray status --address=127.0.0.1:" + headPort + " 2>&1"
 	deadline := time.Now().Add(timeout)
 	var last string
 	for time.Now().Before(deadline) {
 		out := execInPod(t, ctx, cs, podName, cmd)
 		last = out
-		// `ray status` prints an "Autoscaler status / Node status / Healthy"
-		// block; "Ray runtime is running" is only printed by ray start.
-		if strings.Contains(out, "Node status") && strings.Contains(out, "Healthy") {
+		// "Node status" is present in every version of `ray status` output
+		// once it reaches the GCS. ("Ray runtime is running" is only printed
+		// by `ray start`; node lines are labeled "Healthy:" or "Active:".)
+		if strings.Contains(out, "Node status") {
 			return out
 		}
 		time.Sleep(2 * time.Second)
 	}
+	logGCSConnectivity(t, ctx, cs, podName, headAddr)
 	return last
+}
+
+// logGCSConnectivity dumps the head's GCS bind address and whether the GCS
+// port is reachable, so a failing `ray status` is actionable.
+func logGCSConnectivity(t *testing.T, ctx context.Context, cs *kubernetes.Clientset, podName, headAddr string) {
+	t.Helper()
+	headIP, headPort, _ := strings.Cut(headAddr, ":")
+	t.Logf("ray GCS connectivity diagnostics (pod %s, addr %s):", podName, headAddr)
+	probes := []string{
+		"cat /tmp/ray/current_cluster 2>&1 || true",
+		"cat /tmp/ray/session_latest/ray_node_ip_address 2>&1 || true",
+		"python3 -c \"import socket;s=socket.create_connection(('127.0.0.1'," + headPort + "),2);print('loopback " + headPort + " reachable')\" 2>/dev/null || python -c \"import socket;s=socket.create_connection(('127.0.0.1'," + headPort + "),2);print('loopback " + headPort + " reachable')\" 2>/dev/null || echo 'loopback " + headPort + " unreachable'",
+		"python3 -c \"import socket;s=socket.create_connection(('" + headIP + "'," + headPort + "),2);print('" + headIP + " " + headPort + " reachable')\" 2>/dev/null || python -c \"import socket;s=socket.create_connection(('" + headIP + "'," + headPort + "),2);print('" + headIP + " " + headPort + " reachable')\" 2>/dev/null || echo '" + headIP + " " + headPort + " unreachable'",
+		"tail -n 15 /tmp/ray/session_latest/logs/gcs_server.out 2>&1 || true",
+	}
+	for _, c := range probes {
+		t.Logf("$ %s\n%s", c, execInPod(t, ctx, cs, podName, c))
+	}
 }
 
 // execInPod runs a command in the first container of a pod and returns stdout.
