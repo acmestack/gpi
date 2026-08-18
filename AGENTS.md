@@ -10,6 +10,10 @@
   3. 项目内部包（`github.com/acmestack/gpi/...`）。
   统一用 `goimports -local github.com/acmestack/gpi -w <file>` 自动分组（工具已装在 `~/go/bin/goimports`）。不要手动把第三方和内部包混在一组。
 - **生成/新增 Go 文件后必须格式化**：每次生成或新增 `.go` 文件后，立即运行 `gofmt -w <file>` 或 `goimports -local github.com/acmestack/gpi -w <file>` 格式化，确保缩进、空行、import 分组符合规范。
+- **函数参数约定**：
+  - **参数越少越好**：3 个及以上参数且含义相关的，优先打包成一个 struct 传参（如 kubernetes 的 `buildPod(p podParams)`），后续新增参数只加 struct 字段，不改签名。
+  - **用 config 的函数，config 参数放第一位**：形如 `func f(cfg *Config, ...)`，cfg 可 nil（内部回落默认值）。
+  - 避免把调用上下文信息（namespace、region、role 等）拆成多个平铺参数。
 - **provider.go 文件结构顺序**：每个 cloud provider 的 `provider.go` 必须按以下顺序组织：
   1. `var logger = logging.WithName("<name>")` — 包级日志器
   2. `const CloudName = "<name>"` — 云名称常量（**必须在 provider.go 中，不在 client.go 中**）
@@ -85,6 +89,14 @@
 2. **新建分支**：基于最新 main 创建全新分支，分支名体现特性/修复内容（如 `feature/<name>`、`fix/<name>`、`docs/<name>`）。
 3. **开发**：只在该分支上工作，不要直接改 main。
 4. **完成后**：展示 diff → 用户确认 → `git commit -S` → `git push origin <branch>` → 提 PR 合并到 upstream main。
+
+## 测试与 CI（Testing / CI）
+
+- **单元测试**：`make test`（`go test ./...`），不依赖外部资源，提交前必须全部通过。
+- **Kubernetes e2e 测试**：`internal/cloud/kubernetes/e2e_test.go` 用 `//go:build e2e` tag 隔离，`make e2e` 运行（需真实集群，如 kind，通过 `KUBECONFIG` 连接）。普通 `make test` 不跑 e2e。
+- **PR 合入门槛（E2E gate）**：`.github/workflows/e2e.yml` 在每个 PR 上用 **kind 集群跑 Kubernetes e2e**（当前覆盖 3 个主流 k8s 版本矩阵：v1.36.1 / v1.35.5 / v1.34.8）。**PR 必须通过全部 e2e job 才能合并**——这是强制门槛，不是可选项。
+- e2e 测试涉及真实云/集群的，都要走 workflow 而不是本地；本地跑不通的（无 kind/docker）以 CI 结果为准。
+- 涉及云 provider 的改动，除了单元测试，还应在 PR 里评估是否受 e2e 影响（新增 k8s 行为时补充对应 e2e 断言）。
 
 ## 版本发布（tag）
 

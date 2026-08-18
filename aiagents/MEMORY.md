@@ -1,8 +1,24 @@
 # Gpi 项目沟通记录（MEMORY）
 
-- **文档版本**：v27（2026-08-15）
+- **文档版本**：v44（2026-08-18）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v44（2026-08-18）**：e2e 第八次失败（43.868s）——日志完整且模式与 v43 完全相同（4 次尝试仍 1 节点、head/worker 交替）。结论：**任务级 `scheduling_strategy="SPREAD"` 在此 Ray 版本实际未生效**（行为与 DEFAULT 无差别，已知 Ray 任务 SPREAD bug）。产品本身连续两次日志证明完全健康。修复：改用 **placement group + SPREAD 策略**（`ray.util.placement_group([{"CPU":1},{"CPU":1}], strategy="SPREAD")` + `pg.ready(timeout=30)`），2 个 bundle 各绑一个节点，任务用 `node_ip.options(placement_group=pg, placement_group_bundle_index=i)` 各落一个 bundle——确定性分布，不依赖任务调度器启发式（训练/推理同款机制）。若此还失败，说明 worker bundle 落不上（资源/调度），下一步查 pg 状态。commit 待推送。
+- **v43（2026-08-18）**：e2e 第七次失败（43.16s）——但这次日志完整，**根因反转，真正的 bug 在测试本身**。数据：(A) ray node probe 显示双节点 `alive=True addr=10.244.0.6/7 cpu=1.0`，地址正确、各报 1 CPU（`0.0/2.0 CPU`）⇒ "worker 上报 0 CPU"假设排除；(B) 4 次任务尝试，每次 8 个任务**全部落单节点且 head/worker 交替**（attempt1→head, attempt2→worker...），worker 完全能跑任务 ⇒ **非调度 bug，是 Ray 默认调度器对纯 CPU 任务 PACK 到单节点**，不跨节点均摊。修复：`@ray.remote(scheduling_strategy="SPREAD")` 显式摊开；紧凑节点计数改为按 `node_` ID 去重（刚才显示 3 是合并两份 ray status 输出重复计数）。gpilet 双 pod 校验（hostname/cpus=4/ray_running=true）继续 PASS，证明 status.json 链路健康。v31..v42 的 node-IP、GPI_POD_IP、等注册、重试全部是必要前置——worker 地址/资源已完全正确，就差调度策略。commit 待推送。
+- **v42（2026-08-18）**：e2e 第六次失败（44.177s）。用户贴的日志在 2 节点 `ray status` 的 **Recent failures 之后、Resources 段之前截断**——而 Resources 的 CPU 总数正是关键诊断（若 2 节点时显示 1.0 CPU 而非 2.0，说明 worker 上报 0 CPU、调度器不会派任务）。搜索确认"Ray 只用 head 节点"是经典症状。改动（commit 待推送）：① 压缩 ray status 日志——只打节点数 + CPU 总数行（原来打两个完整输出，吃掉 CI 日志预算致截断）；② ray status 之后**立即**跑 `ray.nodes()` 探针（head pod 内 ray.init 后打印每节点 `alive/addr/cpu`）——此输出紧随 ray status 且紧凑，截断也抓得到，直接回答"worker 是否以正确地址注册、上报多少 CPU"。待用户贴新日志的 RAY_NODE 行定根因。
+- **v40（2026-08-18）**：e2e 第三次失败（42.61s）。用户又贴幻觉分析（称 pod 被提前终止/资源不足——只是正常清理）。关键：b017a20 已等 2 节点注册 + 重试 4 次，任务仍全落 head ⇒ **非竞态，是真 bug：worker 已注册（Active）但无法执行任务**。根因定位：**worker 的 `ray start` 缺 `--node-ip-address`**（head 有、worker 没有）。容器内 Ray 可能探测到错误网卡（如 bridge）IP → worker 以错误地址注册 → GCS 认为节点在（Active）但 head 连不上它 → 任务失败被 Ray 重试落到 head。修复（commit 待推送）：buildPod **双角色都注入 `GPI_POD_IP`**（downward API fieldRef status.podIP），worker 的 `ray start --address=$GPI_HEAD_ADDR:6379` 加 **`--node-ip-address=$GPI_POD_IP`**；单测补 worker 命令与 env 断言。KubeRay 同款模式。
+- **v39（2026-08-18）**：用户粘贴的 CI 日志再次混入幻觉（"--- ERROR ---"、称 TestResolveGPUResourceKey panic——实际全 PASS；且日志在 ray status 块后**截断**，真实错误缺失）。但据时序推得根因：14.95s 快速失败 + 任务循环若拿不到 NODE_IPS= 会跑满 90s ⇒ **分布式任务执行成功但断言 len(nodes)<2 触发**，即 8 个任务全落 head，worker 已注册（Active）但尚未可调度——刚 join 节点的经典调度竞态。修复（commit 待推送）：任务前用 `node_` 行计数轮询 ray status 直到 **2 节点注册**（90s 上限）；任务改为**最多 4 次重试**（<2 节点时每次间隔 5s 让 worker 变为可调度，每次 t.Logf 结果）。若 4 次仍 <2 节点说明是系统真 bug（worker 不可调度）而非竞态。
+- **v38（2026-08-17）**：e2e 覆盖加固（commit 待推送）。用户质疑"CI 绿了但 e2e 真覆盖了吗"，审查后确认：生命周期测试真实覆盖 provider K8s 链路；但 **gpilet 只查文件存在、Ray 只验证成形、从未跑真实任务**。补两块：(A) **真实分布式 Ray 任务**——head pod 内 heredoc 写 python 脚本，`ray.init(address=<headIP>:6379)` + `@ray.remote` 函数返回 `ray.util.get_node_ip_address()`，跑 8 个任务，断言 NODE_IPS 去重后 **>= 2 个节点**（同时证明调度/object store/driver/worker 注册）；解析只取 NODE_IPS= 后第一行防日志污染。(B) **status.json 内容校验**（双 pod）：`json.Unmarshal` 进 `gpilet.Status`，断言 `Hostname==pod名`、`CPUs>=1`、`MemTotalGB>0`、`RayRunning==true`、`CollectedAt` 新鲜（<30s）。新增 import：`encoding/json`、`internal/gpilet`。
+- **v37（2026-08-17）**：e2e 继续加固（commit 8f2f39b）。`pollRayStatus` 改为同时尝试 `ray status --address=<headIP>:port` 与 `ray status --address=127.0.0.1:port` 两种地址（Ray GCS 可能绑定 pod IP 或 loopback，取决于 Ray 的接口探测；Ray 社区确认 `ray status` 需要显式 ip:port 且失败会打 stderr）。匹配改为版本稳定的 **"Node status"** 单关键字（"Healthy:" 与 "Active:" 因版本而异，不可靠）。head 断言简化：有 "Node status" 即证明 GCS 可达；**两节点验证完全交给双 pod `pgrep -f raylet`**（worker 无法连 GCS 时 raylet 会在 60s 内退出，是集群成形的直接证据）。超时时新增 `logGCSConnectivity` 诊断：dump `/tmp/ray/current_cluster`、`ray_node_ip_address`、用 python 探测 127.0.0.1 与 headIP 的 GCS 端口连通性、gcs_server.out 尾部——下一次 CI 若仍失败，此输出将直接揭示 GCS 绑定地址与监听状态。
+- **v36（2026-08-17）**：e2e 真正根因找到——**断言词错误**。`ray status` 输出结构是 `Autoscaler status / Node status / Healthy: / Resources`，而**不是** "Ray runtime is running"（那是 `ray start`/`ray.init()` 的措辞）。之前 v34/v35 的 `pollRayStatus` 匹配 "Ray runtime is running" 永远 false → 120s 必然超时 → 断言空输出。修复：`pollRayStatus` 改为匹配 `Node status` + `Healthy`；head 断言改 `Autoscaler status`/`Node status`；2 节点验证改为**双 pod `pgrep -f raylet`**（head+worker 都有 raylet 进程，最直接证明集群成形，替代脆弱的 `ray.worker` 文本匹配）。`execInPod` 合并 stdout+stderr 进返回值。期间用户转述分析两度误判 `TestResolveGPUResourceKey`（本地 + `-count=5` 全 PASS，与该 e2e 失败无关）。
+- **v35（2026-08-17）**：e2e `TestE2EGpiletAndRay` 第三次修复——`pollRayStatus` 从 `--address=auto` 改为显式 `ray status --address=<headIP>:6379`（headIP 从 pod 直接 Get，绕开 current-cluster 文件依赖）；bootstrap 脚本加 `ulimit -n 65536`（Ray 容器官方前置，KubeRay 也强制注入，防 fd 耗尽）；worker join 失败回显 "worker join failed, retrying"；worker 未 join 断言失败时追加抓取 `/tmp/ray/session_latest/logs/` 诊断。
+- **v35（2026-08-17）**：e2e `TestE2EGpiletAndRay` 第三次修复——`pollRayStatus` 从 `--address=auto` 改为显式 `ray status --address=<headIP>:6379`（headIP 从 pod 直接 Get，绕开 current-cluster 文件依赖）；bootstrap 脚本加 `ulimit -n 65536`（Ray 容器官方前置，KubeRay 也强制注入，防 fd 耗尽）；worker join 失败回显 "worker join failed, retrying"；worker 未 join 断言失败时追加抓取 `/tmp/ray/session_latest/logs/` 诊断。注：期间用户转述的分析称 `TestResolveGPUResourceKey` 失败（误判，本地一直 PASS，`resolveGPUResourceKey` 已用 ToUpper 处理大小写，与该 e2e 失败无关）。
+- **v34（2026-08-17）**：e2e `TestE2EGpiletAndRay` 继续修复——head 日志显示 "Ray runtime started" 但 `ray status` 仍 exit 1，判定是**地址自动检测失败**（无参 `ray status` 在新 shell 里找不到集群地址）。改动：`execInPod` 分离 stdout/stderr，失败时输出 stderr；`pollRayStatus` 用 `ray status --address=auto`（读 `ray start` 写的 current-cluster 文件）；Ray/gpilet 断言失败时先 `dumpPodDiagnostics`（pod phase/事件/日志）再报错。
+- **v33（2026-08-17）**：e2e `TestE2EGpiletAndRay` 修复 Ray/gpilet 就绪时序——pod Running 不代表 Ray 已就绪（容器 start 时 `ray start` 还在初始化、worker join 需时间）。改动：`execInPod` 命令失败（如 `ray status` exit 1）不再 Fatal，改为 log + 返回输出；新增 `pollRayStatus`（120s 轮询 `ray status` 直到 "Ray runtime is running" + 2 节点）；gpilet pgrep 与 status.json 检查同样加 60s 轮询。worker join 用 `until ray start --address` 自愈重试、head 用 `--node-ip-address=$GPI_POD_IP` 绑定 PodIP（provider.go podStartupCommand 已确认正确）。
+- **v32（2026-08-17）**：v31 基础上用户要求"超时/重试可配置 + 多重试、耗尽才真失败"。改动：① `kubernetes` 配置段新增 `pod_wait_timeout`（默认 120s）/`pod_wait_retries`（默认 3），`EffectivePodWaitTimeout/Retries` nil 安全；② `RunInstances` 改 `waitPodReady`（retries × timeout，全部失败返回 error）+ `cleanupPods`（失败清理已创建 pod）+ head IP 拿不到也真失败；③ `waitPodIP` 超时参数化；④ **统一 Instance.ID 为 pod 名**（podToInstance/DescribeInstances 原用 UID，与 RunInstances 的 podName、TerminateInstances 按名删三处不一致——这就是 CI 里"pod 已 Running 但测试仍超时"的根因）；⑤ TestE2ELifecycle 断言 pending→running（RunInstances 现已等待 Running）；⑥ **SkyPilot 调研**（skypilot-org/skypilot 源码）：其 K8s pod 就绪等待**不可配置**（调度用 `kubernetes.provision_timeout` 10-60s、运行等待硬编码 stall 600s；AWS/Azure 等 running 硬编码 600s、GCP 无超时），我们的 pod_wait_timeout/retries 是**对 SkyPilot 的增强**——等待时长与重试次数可配置；已写入 enhancements 文档 §4.1（zh/en）+ 架构文档 k8s 配置段。
+- **v31（2026-08-17）**：修复 e2e CI 失败——pod 60s 未 Running。根因与修复：① RunInstances 现等待 pod 到 Running（`waitPodRunning`，120s 超时，失败仅日志不终止）；② `Instance.ID` 从 pod UID 改为 pod 名（与 TerminateInstances 按名删除一致，连带修复 provisioner.Down 旧 bug）；③ 容器加 `ImagePullPolicy: IfNotPresent`；④ 加 Ray 标准 `/dev/shm` emptyDir（默认 64Mi 太小致 Ray object store 启动问题）；⑤ `waitPodIP` 超时 30s→90s；⑥ e2e 超时增加 `dumpPodDiagnostics`（pod phase/事件/容器日志，CI 可见诊断）。
+- **v30（2026-08-17）**：Kubernetes e2e 扩展覆盖 gpilet + Ray 真实运行——SkyPilot 式 bootstrap（head `ray start --head`、worker join、gpilet 常驻）；新增 `Dockerfile.gpi-base`（rayproject/ray + gpilet，默认节点镜像）；`kubernetes` config 段支持 context/namespace/image/gpilet/ray 端口配置；e2e 用 gpi-base 镜像 + `kind load docker-image`；release.yml 发布 gpi-base 镜像；`examples/gpi-config.yaml` 补 kubernetes 段；e2e.yml 镜像构建改 buildx + gha 缓存（build 前置早暴露）；kubernetes provider 函数参数收敛（`buildPod` 传 `podParams` struct、`podStartupCommand(cfg, role)` cfg 放第一位）。
+- **v29（2026-08-16）**：Kubernetes e2e 测试基础设施——`e2e_test.go`（build tag e2e，真实 kind 集群生命周期测试）+ `make e2e` + `.github/workflows/e2e.yml`（kind + 3 个 k8s 版本矩阵 v1.36.1/v1.35.5/v1.34.8，PR 强制门槛）。覆盖率检查本次暂缓。
 - **v28（2026-08-16）**：GCP/Azure/Kubernetes cloud Provider 实现；v0.0.1 发布 + tag 推送；v0.0.2 开发准备（VERSION + buildinfo bump）；release.yml fork 保护（注释化）；AGENTS.md 新增 provider.go/client.go 文件结构规则、发布后流程、新特性/Bug 开发流程。
 - **v27（2026-08-15）**：架构图 v65→v67——移除 Rate Limiting；执行后端节点放大；云层丰富（aliyun ECS / aws EC2 / gcp+azure 计划 / 更多 + VPC/SG/Subnet/Spot/Pricing）；新增节点层（Ray+gpilet）；扩展能力改右侧纵栏；颜色对比增强。架构文档 v66→v67。
 - **v26（2026-08-15）**：架构图 v64→v65——overview 从 LR 流程图改为分层带状布局（消除线交叉），横切能力紧跟 REST API 右侧，新增扩展能力区（接入新云/扩展 Optimizer/自定义 Encoder），容器尺寸修正（redis 不再溢出），英文版全部翻译；同时将架构图嵌入 README 中英文首页。
@@ -70,6 +86,29 @@
 
 - **决策**：用户明确新特性/新 bug 开发的标准流程——先回 main、`git fetch upstream && git reset --hard upstream/main`、`git push origin main --force-with-lease` 同步 fork，再基于最新 main 创建全新的 `feature/<name>`/`fix/<name>`/`docs/<name>` 分支，仅在该分支开发，完成后确认提交 push 提 PR。已写入 AGENTS.md「新特性/新 Bug 开发流程」。
 - **决策**：release.yml 的 `if: github.repository == 'acmestack/gpi'` 改为注释保留（fork 各自推 GHCR 不会覆盖，无需启用），并加注释说明。
+
+### 2026-08-16（Kubernetes e2e 测试基础设施）
+
+- **背景**：用户要求支持 Kubernetes e2e——PR 提交时在真实 k8s 上跑，作为**强制合入门槛**；本次先做 k8s，其他云后面补；覆盖率检查（<80% 不能合入）本次暂缓，仅记录需求。
+- **决策**：e2e 用 **kind 集群**在 GitHub workflow 中运行，覆盖 3 个主流 k8s 版本矩阵（v1.36.1 / v1.35.5 / v1.34.8，kind v0.32.0，kubectl 各版本对齐）。
+- **决策**：`internal/cloud/kubernetes/e2e_test.go` 用 `//go:build e2e` tag 隔离，`make e2e` 运行（`go test -tags e2e -count=1 -v ./internal/cloud/kubernetes/`），普通 `make test` 不跑 e2e。测试镜像用 kind 预置的 `registry.k8s.io/pause:3.9`（可靠、常驻 Running），可用 `GPI_E2E_IMAGE` 覆盖。
+- **e2e 覆盖**：单节点 Pod 全生命周期——RunInstances（Pending）→ 轮询 Running → ListInstances → DescribeInstances → GetPublicIP（pod IP 非空）→ TerminateInstances → 确认删除。
+- **新增文件**：`.github/workflows/e2e.yml`、`internal/cloud/kubernetes/e2e_test.go`；`Makefile` 加 `e2e` target；AGENTS.md 新增「测试与 CI」小节（PR 合入门槛）。
+- **发现既有问题**：`Provisioner.Down`（provisioner.go:592）用 `n.ID`（pod UID）调 `TerminateInstances`，但 k8s provider 的 `TerminateInstances` 期望 pod 名（注释"uid is actually the pod name"）——ID 语义不一致，后续需修复（e2e 当前直接传 pod 名规避）。
+
+### 2026-08-17（K8s e2e 覆盖 gpilet + Ray · gpi-base 镜像 · kubernetes 配置化）
+
+- **背景**：用户指出 e2e 只覆盖 pod 生命周期，gpilet 和 Ray 未覆盖。用户想法：预构建含 gpilet 的镜像（pod 直接用），Ray 按 SkyPilot 模式。
+- **调研结论**：SkyPilot K8s 后端 = KubeRay operator + headless Service（较重）；gpi 方案 = 预构建镜像 + head 先建/等 PodIP/注入 worker 的串行 bootstrap，**更轻量且与 SkyPilot 镜像策略一致**，e2e 验证真实运行。
+- **决策（SkyPilot 式 bootstrap）**：`buildPod` 注入 `GPI_ROLE`/`GPI_POD_IP`（downward API）/`GPI_HEAD_ADDR` env；容器启动命令 `podStartupCommand`——先 `nohup gpilet serve`（常驻），head 跑 `ray start --head`（绑定自身 PodIP），worker `until ray start --address=$GPI_HEAD_ADDR:6379`（重试 join）。
+- **决策（gpi-base 镜像）**：新增 `Dockerfile.gpi-base`——`rayproject/ray:2.40.0-py311` + 静态编译的 `gpilet`（/usr/local/bin/gpilet）+ 预置 `/var/lib/gpilet`；`GetImage` 默认返回 `ghcr.io/acmestack/gpi-base:latest`。
+- **决策（kubernetes 配置段）**：`internal/cloud/kubernetes/config.go` 新增 `Config`（context/namespace/image/gpilet_dir/gpilet_interval/ray_head_port/ray_dashboard_port），`config.Load().Section("kubernetes", ...)`；`internal/config` 零改动（云专项配置下沉模式复用）。
+- **决策（e2e 升级）**：e2e 默认镜像从 pause 改为 gpi-base；新增 `TestE2EGpiletAndRay`——2 节点真实验证 `ray status` 显示 2 节点、`pgrep gpilet` 在 head+worker 均运行、`status.json` 生成；e2e.yml 加 build + `kind load docker-image` 步骤。
+- **决策（release）**：release.yml docker job 追加 gpi-base 镜像构建推送（amd64+arm64，tag + latest）。
+- **决策（example 同步）**：`examples/gpi-config.yaml` 新增 `kubernetes:` 段。
+- **决策（workflow 镜像构建顺序）**：e2e.yml 从裸 `docker build` 改为 `docker/build-push-action` + **GHA layer 缓存**（`cache-from/to: type=gha`），build 移到 kind 之前（build 失败更早暴露、3 矩阵复用层加速），load 独立一步。
+- **决策（provider 参数收敛）**：kubernetes provider 函数参数最小化——`buildPod` 改收单个 `podParams` struct（Name/Namespace/Spec/Role/HeadAddr/Cfg），后续新增 knobs 只加字段；`podStartupCommand(cfg, role)` 用 config 的参数放第一位；约定：用 config 的函数 cfg 放第一位、多参数打包 struct、参数越少越好。
+- **已知问题**：本地无 docker/kind，e2e 需靠 PR workflow 验证；`go.mod` 增加 remotecommand/spdy/websocket 依赖（e2e exec 用）。
 
 ### 2026-08-08（立项 · v1 骨架）
 
@@ -334,6 +373,8 @@
 | License / CLA | MIT；AcmeStack CLA（`.github/CLA.md` + cla-assistant） |
 | 沟通记录 | 每次沟通后追加到 `aiagents/MEMORY.md` |
 | Workflow 保护 | release.yml 加 `if: github.repository == 'acmestack/gpi'` 防 fork 触发；仓库设置取消 "Run workflows from fork pull requests" |
+| K8s e2e | `.github/workflows/e2e.yml` kind 集群 × 3 版本矩阵（v1.36.1/v1.35.5/v1.34.8），PR 强制门槛；e2e 用 `//go:build e2e` tag + `make e2e` 隔离；默认镜像 gpi-base（gpilet + Ray），新增 `TestE2EGpiletAndRay` 验证 Ray 集群 + gpilet 运行 |
+| K8s 节点 bootstrap | 预构建 `Dockerfile.gpi-base`（rayproject/ray + gpilet）；`buildPod` 注入 env（GPI_ROLE/GPI_POD_IP/GPI_HEAD_ADDR）+ 启动命令（gpilet serve + ray start head/worker）；head 先建等 PodIP、worker join |
 | 平台 | Linux/macOS；无 Windows |
 | 用户配置文件 | `$GPI_HOME/config.yaml`（默认 `~/.gpi/config.yaml`）+ 项目 `.gpi.yaml` 层叠（项目覆盖用户） |
 | 云专项配置 | 各云自己包内定义 `Config` struct + `LoadConfig()`（`config.Load().Section(CloudName, &c)`），`internal/config` 云无关、新云零改动 |

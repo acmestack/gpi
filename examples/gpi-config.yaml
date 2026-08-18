@@ -25,6 +25,28 @@ aliyun:
   # Security group id to reuse instead of creating one.
   security_group_id: sg-bp1www
 
+kubernetes:
+  # Kubeconfig context used when the task does not pin a region (default: the
+  # current kubeconfig context).
+  context: kind-gpi
+  # Namespace where gpi node pods are created (default "default").
+  namespace: ml
+  # Container image used for node pods. Defaults to the prebuilt gpi base image
+  # (gpilet + Ray, see Dockerfile.gpi-base). Use a custom image when you need
+  # extra dependencies pre-installed on every node.
+  image: ghcr.io/acmestack/gpi-base:latest
+  # gpilet runtime knobs (see gpilet serve --help).
+  gpilet_dir: /var/lib/gpilet
+  gpilet_interval: 10
+  # Ray cluster ports.
+  ray_head_port: 6379
+  ray_dashboard_port: 8265
+  # Node readiness wait: RunInstances waits up to pod_wait_timeout seconds per
+  # attempt (image pull + container start can be slow on first run), retrying
+  # pod_wait_retries times before failing the launch.
+  pod_wait_timeout: 120
+  pod_wait_retries: 3
+
 # --- Global defaults (used when the CLI flag is not explicitly passed) ---
 
 # Default cloud filter for gpi launch/optimize (comma-separated).

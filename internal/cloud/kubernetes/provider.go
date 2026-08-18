@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 
 	"github.com/acmestack/gpi/internal/cloud"
 	"github.com/acmestack/gpi/internal/logging"
@@ -29,9 +31,30 @@ const (
 
 	defaultNamespace = "default"
 
+	// defaultBaseImage is the prebuilt gpi base image (gpilet + Ray); see
+	// Dockerfile.gpi-base. Overridable via the kubernetes config section.
+	defaultBaseImage = "ghcr.io/acmestack/gpi-base:latest"
+
 	// maxClusterNameLen is the max length for K8s resource names (63 chars),
 	// with 21 chars reserved for suffixes like "-head", "-worker0".
 	maxClusterNameLen = 42
+
+	// Env vars injected into every gpi node pod to bootstrap gpilet + Ray.
+	envRole     = "GPI_ROLE"
+	envPodIP    = "GPI_POD_IP"
+	envHeadAddr = "GPI_HEAD_ADDR"
+
+	// Ray ports (mirror SkyPilot defaults for user Ray clusters).
+	rayHeadPort       = 6379
+	rayDashboardPort  = 8265
+	gpiletBin         = "/usr/local/bin/gpilet"
+	gpiletDir         = "/var/lib/gpilet"
+	gpiletIntervalSec = 10
+
+	// Pod readiness wait: per-attempt timeout and retry count used by
+	// RunInstances when waiting for a node pod to reach Running.
+	podWaitTimeout = 120 * time.Second
+	podWaitRetries = 3
 )
 
 func init() {
@@ -56,12 +79,18 @@ func (Provider) Regions(ctx context.Context) ([]string, error) {
 // RunInstances creates pods in the given context (region).
 // The NamePrefix field on LaunchSpec is used as the cluster name.
 func (Provider) RunInstances(ctx context.Context, spec *cloud.LaunchSpec) ([]*cloud.Instance, error) {
+	cfg := LoadConfig()
 	context := spec.Region
 	if context == "" {
-		var err error
-		context, err = CurrentContext()
-		if err != nil {
-			return nil, err
+		if cfg != nil {
+			context = cfg.Context
+		}
+		if context == "" {
+			var err error
+			context, err = CurrentContext()
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	cs, err := clientFor(context)
@@ -69,14 +98,30 @@ func (Provider) RunInstances(ctx context.Context, spec *cloud.LaunchSpec) ([]*cl
 		return nil, err
 	}
 	ns := defaultNamespace
+	if cfg != nil {
+		ns = cfg.EffectiveNamespace()
+	}
 
 	// Truncate cluster name to fit K8s 63-char limit with suffixes.
 	clusterName := truncateName(spec.NamePrefix, maxClusterNameLen)
 
+	// Create pods sequentially so the head's pod IP is known before workers
+	// start, letting workers join the Ray cluster (SkyPilot-style bootstrap).
+	var headAddr string
 	var instances []*cloud.Instance
+	var created []string
+
+	// Pod readiness wait is configurable (pod_wait_timeout / pod_wait_retries)
+	// so slow image pulls in CI don't fail a launch prematurely.
+	timeout := podWaitTimeout
+	retries := podWaitRetries
+	if cfg != nil {
+		timeout = cfg.EffectivePodWaitTimeout()
+		retries = cfg.EffectivePodWaitRetries()
+	}
 	for i := 0; i < spec.NumNodes; i++ {
 		role := "worker"
-		if i == 0 && spec.NumNodes > 1 {
+		if i == 0 {
 			role = "head"
 		}
 		if spec.NumNodes == 1 {
@@ -94,28 +139,130 @@ func (Provider) RunInstances(ctx context.Context, spec *cloud.LaunchSpec) ([]*cl
 		// Delete stale pod if exists
 		_ = cs.CoreV1().Pods(ns).Delete(ctx, podName, metav1.DeleteOptions{})
 
-		pod := buildPod(podName, ns, spec, role)
-		created, err := cs.CoreV1().Pods(ns).Create(ctx, pod, metav1.CreateOptions{})
+		pod := buildPod(podParams{
+			Name:      podName,
+			Namespace: ns,
+			Spec:      spec,
+			Role:      role,
+			HeadAddr:  headAddr,
+			Cfg:       cfg,
+		})
+		_, err = cs.CoreV1().Pods(ns).Create(ctx, pod, metav1.CreateOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("create pod %s: %w", podName, err)
 		}
 		logger.Info("pod created", "name", podName, "namespace", ns, "context", context)
+		created = append(created, podName)
 
+		// Wait for the pod to reach Running. Image pull + container start can
+		// take a while on first CI run, so retry (pod_wait_retries attempts of
+		// pod_wait_timeout each); if it still is not Running, fail for real and
+		// clean up the pods created so far.
+		if err := waitPodReady(ctx, cs, ns, podName, timeout, retries); err != nil {
+			cleanupPods(ctx, cs, ns, created)
+			return nil, err
+		}
+
+		// ID is the pod name so TerminateInstances can delete by name (the
+		// pod UID is not accepted by the delete API).
 		inst := &cloud.Instance{
-			ID:           string(created.UID),
+			ID:           podName,
 			Name:         podName,
 			InstanceType: spec.InstanceType,
 			Region:       context,
-			Status:       cloud.StatusPending,
+			Status:       cloud.StatusRunning,
 			Tags:         spec.Tags,
 		}
 		instances = append(instances, inst)
+
+		// Capture the head pod's IP so workers can join its Ray cluster.
+		if role == "head" && spec.NumNodes > 1 {
+			headAddr = waitPodIP(ctx, cs, ns, podName, timeout)
+			logger.Info("head pod ip", "name", podName, "ip", headAddr)
+			if headAddr == "" {
+				cleanupPods(ctx, cs, ns, created)
+				return nil, fmt.Errorf("head pod %s: no pod IP within %v", podName, timeout)
+			}
+		}
 	}
 	return instances, nil
 }
 
+// waitPodReady waits for a pod to reach Running, retrying up to retries
+// attempts of timeout each. It returns a descriptive error when the pod never
+// becomes Running.
+func waitPodReady(ctx context.Context, cs *kubernetes.Clientset, ns, name string, timeout time.Duration, retries int) error {
+	for attempt := 1; attempt <= retries; attempt++ {
+		if waitPodRunning(ctx, cs, ns, name, timeout) {
+			return nil
+		}
+		logger.Info("pod not running, retrying",
+			"name", name, "attempt", attempt, "of", retries, "timeout", timeout)
+	}
+	return fmt.Errorf("pod %s did not reach Running within %d attempts of %v", name, retries, timeout)
+}
+
+// cleanupPods deletes the given pods (best-effort), used when RunInstances
+// fails partway through a multi-node launch.
+func cleanupPods(ctx context.Context, cs *kubernetes.Clientset, ns string, names []string) {
+	grace := int64(0)
+	for _, n := range names {
+		if err := cs.CoreV1().Pods(ns).Delete(ctx, n, metav1.DeleteOptions{GracePeriodSeconds: &grace}); err != nil {
+			if !errors.IsNotFound(err) {
+				logger.Info("cleanup pod failed", "name", n, "err", err)
+			}
+			continue
+		}
+		logger.Info("pod cleaned up", "name", n)
+	}
+}
+
+// waitPodRunning polls a pod until it reaches Running or a timeout elapses.
+func waitPodRunning(ctx context.Context, cs *kubernetes.Clientset, ns, name string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		pod, err := cs.CoreV1().Pods(ns).Get(ctx, name, metav1.GetOptions{})
+		if err == nil && pod.Status.Phase == corev1.PodRunning {
+			return true
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return false
+}
+
+// waitPodIP polls a pod until it has a PodIP or a timeout elapses.
+func waitPodIP(ctx context.Context, cs *kubernetes.Clientset, ns, name string, timeout time.Duration) string {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		pod, err := cs.CoreV1().Pods(ns).Get(ctx, name, metav1.GetOptions{})
+		if err == nil && pod.Status.PodIP != "" {
+			return pod.Status.PodIP
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return ""
+}
+
+// podParams carries everything needed to build a single gpi node pod.
+// Grouped into one struct so buildPod keeps a minimal, stable signature and
+// new knobs (affinity, tolerations, ...) only add a field here.
+type podParams struct {
+	// Name and Namespace of the pod.
+	Name      string
+	Namespace string
+	// Spec is the launch spec (instance type, image, tags, region).
+	Spec *cloud.LaunchSpec
+	// Role is "head" or "worker".
+	Role string
+	// HeadAddr is the head pod's IP; set only for workers (empty for head).
+	HeadAddr string
+	// Cfg is the kubernetes config section; may be nil (defaults used).
+	Cfg *Config
+}
+
 // buildPod constructs a Pod spec for a gpi cluster node.
-func buildPod(name, namespace string, spec *cloud.LaunchSpec, role string) *corev1.Pod {
+func buildPod(p podParams) *corev1.Pod {
+	name, namespace, spec, role, headAddr, cfg := p.Name, p.Namespace, p.Spec, p.Role, p.HeadAddr, p.Cfg
 	labels := map[string]string{
 		labelClusterName: spec.NamePrefix,
 		labelRole:        role,
@@ -129,7 +276,20 @@ func buildPod(name, namespace string, spec *cloud.LaunchSpec, role string) *core
 	cpus, memGiB, gpuType, gpuCount := parseInstanceType(spec.InstanceType)
 
 	// Build environment variables
-	envVars := []corev1.EnvVar{}
+	// Inject the pod IP via the downward API for BOTH roles so `ray start`
+	// can pin --node-ip-address to the pod IP. Without it Ray may pick a
+	// wrong interface (e.g. a bridge) inside a container; a worker that
+	// registers under the wrong address can never execute tasks and every
+	// task silently falls back to the head.
+	envVars := []corev1.EnvVar{
+		{Name: envRole, Value: role},
+		{
+			Name: envPodIP,
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.podIP"},
+			},
+		},
+	}
 	if gpuCount == 0 {
 		// Prevent GPU visibility when no GPU requested (isolation)
 		envVars = append(envVars, corev1.EnvVar{
@@ -137,15 +297,26 @@ func buildPod(name, namespace string, spec *cloud.LaunchSpec, role string) *core
 			Value: "none",
 		})
 	}
+	if role != "head" && headAddr != "" {
+		// Workers join the head's Ray cluster.
+		envVars = append(envVars, corev1.EnvVar{Name: envHeadAddr, Value: headAddr})
+	}
 
 	containers := []corev1.Container{{
-		Name:  "ray-node",
-		Image: spec.ImageID,
+		Name:            "ray-node",
+		Image:           spec.ImageID,
+		ImagePullPolicy: corev1.PullIfNotPresent,
 		Resources: corev1.ResourceRequirements{
 			Requests: corev1.ResourceList{},
 			Limits:   corev1.ResourceList{},
 		},
-		Env: envVars,
+		Env:     envVars,
+		Command: podStartupCommand(cfg, role),
+		// Ray's object store needs a larger /dev/shm than Kubernetes'
+		// default (64Mi); mount an in-memory emptyDir (Ray standard setup).
+		VolumeMounts: []corev1.VolumeMount{
+			{Name: "dshm", MountPath: "/dev/shm"},
+		},
 	}}
 
 	res := containers[0].Resources
@@ -176,6 +347,11 @@ func buildPod(name, namespace string, spec *cloud.LaunchSpec, role string) *core
 		Spec: corev1.PodSpec{
 			Containers:    containers,
 			RestartPolicy: corev1.RestartPolicyNever,
+			Volumes: []corev1.Volume{
+				{Name: "dshm", VolumeSource: corev1.VolumeSource{
+					EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumMemory},
+				}},
+			},
 		},
 	}
 
@@ -190,6 +366,51 @@ func buildPod(name, namespace string, spec *cloud.LaunchSpec, role string) *core
 	}
 
 	return pod
+}
+
+// podStartupCommand returns the container command that bootstraps gpilet and
+// Ray inside a gpi node pod (SkyPilot-style: head starts Ray, workers join it).
+func podStartupCommand(cfg *Config, role string) []string {
+	gd := gpiletDir
+	if cfg != nil {
+		gd = cfg.EffectiveGpiletDir()
+	}
+	interval := gpiletIntervalSec
+	if cfg != nil {
+		interval = cfg.EffectiveGpiletInterval()
+	}
+	headPort := rayHeadPort
+	if cfg != nil {
+		headPort = cfg.EffectiveRayHeadPort()
+	}
+	dashPort := rayDashboardPort
+	if cfg != nil {
+		dashPort = cfg.EffectiveRayDashboardPort()
+	}
+
+	startGpilet := gpiletBin + " serve --dir " + gd + " --interval " + strconv.Itoa(interval)
+
+	rayStart := ""
+	if role == "head" {
+		rayStart = "ray start --head --port=" + strconv.Itoa(headPort) +
+			" --dashboard-port=" + strconv.Itoa(dashPort) +
+			" --disable-usage-stats --node-ip-address=$GPI_POD_IP"
+	} else {
+		// The worker retries until the head's GCS is reachable (Ray needs a
+		// moment after the head pod starts). KubeRay uses the same pattern
+		// with an init container + `ray health-check`. --node-ip-address pins
+		// the node to the pod IP so tasks can actually be scheduled to it.
+		rayStart = "until ray start --address=$GPI_HEAD_ADDR:" + strconv.Itoa(headPort) +
+			" --node-ip-address=$GPI_POD_IP --disable-usage-stats; do echo \"worker join failed, retrying\"; sleep 2; done"
+	}
+
+	script := "set -e\n" +
+		"ulimit -n 65536\n" +
+		"nohup " + startGpilet + " > /var/log/gpilet.log 2>&1 &\n" +
+		rayStart + "\n" +
+		"tail -f /dev/null\n"
+
+	return []string{"/bin/sh", "-c", script}
 }
 
 // parseInstanceType parses "4CPU--16GB--H100:1" into components.
@@ -267,7 +488,8 @@ func (Provider) ListInstances(ctx context.Context, region, namePrefix string) ([
 	return instances, nil
 }
 
-// DescribeInstances returns details for specific pod UIDs.
+// DescribeInstances returns details for the given pods, matched by pod name
+// (the Instance ID). UID matches are also accepted for backward compatibility.
 func (Provider) DescribeInstances(ctx context.Context, region string, ids []string) ([]*cloud.Instance, error) {
 	context := region
 	if context == "" {
@@ -283,7 +505,7 @@ func (Provider) DescribeInstances(ctx context.Context, region string, ids []stri
 	}
 	ns := defaultNamespace
 	var instances []*cloud.Instance
-	for _, uid := range ids {
+	for _, id := range ids {
 		pods, err := cs.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
 			LabelSelector: labelManagedBy + "=gpi",
 		})
@@ -291,7 +513,7 @@ func (Provider) DescribeInstances(ctx context.Context, region string, ids []stri
 			return nil, err
 		}
 		for _, pod := range pods.Items {
-			if string(pod.UID) == uid {
+			if pod.Name == id || string(pod.UID) == id {
 				instances = append(instances, podToInstance(&pod, context))
 				break
 			}
@@ -435,10 +657,14 @@ func (Provider) ListVSwitches(_ context.Context, _, _ string) ([]cloud.VSwitch, 
 	return nil, nil
 }
 
-// GetImage returns the container image to use.
-func (Provider) GetImage(_ context.Context, _, platform string) (string, error) {
-	// Default gpi base image
-	return "ghcr.io/acmestack/gpi-base:latest", nil
+// GetImage returns the container image to use. The default gpi base image
+// (see Dockerfile.gpi-base) carries gpilet and Ray; it can be overridden via
+// the "kubernetes" section of the gpi config (image: ...).
+func (Provider) GetImage(_ context.Context, _, _ string) (string, error) {
+	if c := LoadConfig(); c != nil && c.Image != "" {
+		return c.Image, nil
+	}
+	return defaultBaseImage, nil
 }
 
 // podToInstance converts a K8s Pod to a gpi cloud.Instance.
@@ -453,7 +679,7 @@ func podToInstance(pod *corev1.Pod, context string) *cloud.Instance {
 		status = cloud.StatusTerminated
 	}
 	inst := &cloud.Instance{
-		ID:           string(pod.UID),
+		ID:           pod.Name,
 		Name:         pod.Name,
 		InstanceType: pod.Labels[labelClusterName],
 		Region:       context,

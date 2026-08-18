@@ -50,6 +50,12 @@
   - `gpi cluster status|nodes` 查看拓扑与角色。
   - 示例：`examples/yaml/distributed-train.yaml`。
 
+## 4.1 可配置的节点就绪等待（对标 SkyPilot provision 超时）
+
+- **SkyPilot**：K8s provider 的 pod 就绪等待**不可配置**——调度等待用 `kubernetes.provision_timeout`（默认 10–60s，`-1` 无限），运行等待走硬编码 stall 检测（同一原因持续 600s 才判失败）；AWS/Azure 等 instance running 也是硬编码大窗口（600s），GCP 无超时。
+- **Gpi**：`kubernetes` config 段暴露 `pod_wait_timeout`（单次等待秒数，默认 120）与 `pod_wait_retries`（重试次数，默认 3），`RunInstances` 按"每次 `pod_wait_timeout`，共 `pod_wait_retries` 次"等待节点 pod 到达 Running；慢镜像拉取（首次 CI 拉 gpi-base）不再一刀切失败，重试耗尽后才真正失败并清理已创建的 pods。
+  - 这是对 SkyPilot 的增强：等待时长与重试次数均可配置，而非硬编码。
+
 ## 5. 单进程双形态（CLI + Server）
 
 - **SkyPilot**：CLI 与 server 为同一 Python 包的两种入口。
@@ -64,6 +70,7 @@
   - `Launch` 时 provisioner 自动把 gpilet 二进制上传到每个节点并拉起（未找到本地 gpilet 二进制则静默跳过，不影响置备）；
   - `gpi cluster nodes C --health`：经 SSH 读取各节点 gpilet 状态，展示实时健康（cpu/load/mem/gpu/ray）。
   - 定位：作为 skylet 的轻量等价物，为后续自动伸缩、健康轮询、资源实时上报提供节点侧数据源；暂无命令/日志代理（当前控制面走 SSH 直连）。
+- **Kubernetes 节点镜像（对标 SkyPilot k8s 镜像预置 skylet）**：`Dockerfile.gpi-base` 基于 `rayproject/ray` 预置 gpilet 二进制（`/usr/local/bin/gpilet`），默认节点镜像 `ghcr.io/acmestack/gpi-base:latest`；Pod 启动命令自动拉起 gpilet + Ray（head/worker），无需 SSH 上传（与 VM 后端的 SSH 上传路径互补）。
 
 ## 7. 可插拔持久化（file / sqlite / mysql / redis）
 

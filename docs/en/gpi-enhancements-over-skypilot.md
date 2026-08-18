@@ -50,6 +50,12 @@
   - `gpi cluster status|nodes` shows the topology and roles.
   - Example: `examples/yaml/distributed-train.yaml`.
 
+## 4.1 Configurable node readiness wait (vs SkyPilot provision timeout)
+
+- **SkyPilot**: pod readiness waiting in the K8s provider is **not configurable** — scheduling wait uses `kubernetes.provision_timeout` (default 10–60s, `-1` = infinite), the running wait uses hardcoded stall detection (fails only after the same reason persists 600s); AWS/Azure also wait for instance running with hardcoded windows (600s), GCP has no timeout.
+- **Gpi**: the `kubernetes` config section exposes `pod_wait_timeout` (seconds per attempt, default 120) and `pod_wait_retries` (retry count, default 3). `RunInstances` waits for each node pod to reach Running as "`pod_wait_retries` attempts of `pod_wait_timeout` each"; slow image pulls (e.g. first CI pull of gpi-base) no longer fail outright — only after retries are exhausted does it fail for real, cleaning up pods created so far.
+  - This is an enhancement over SkyPilot: both the wait duration and retry count are configurable rather than hardcoded.
+
 ## 5. Single binary, dual form (CLI + Server)
 
 - **SkyPilot**: the CLI and server are two entry points of the same Python package.
@@ -64,6 +70,7 @@
   - On `Launch`, the provisioner automatically uploads the gpilet binary to each node and starts it (if no local gpilet binary is found, it silently skips and provisioning is unaffected);
   - `gpi cluster nodes C --health`: reads each node's gpilet status over SSH and shows live health (cpu/load/mem/gpu/ray).
   - Positioning: a lightweight equivalent of skylet that provides a node-side data source for future autoscaling, health polling, and real-time resource reporting; there is currently no command/log proxy (the control plane uses direct SSH).
+- **Kubernetes node image (counterpart of SkyPilot k8s images with skylet baked in)**: `Dockerfile.gpi-base` is based on `rayproject/ray` with the gpilet binary preinstalled at `/usr/local/bin/gpilet`; the default node image is `ghcr.io/acmestack/gpi-base:latest`; the pod start command auto-launches gpilet + Ray (head/worker), so no SSH upload is needed (complementary to the VM backend's SSH upload path).
 
 ## 7. Pluggable persistence (file / sqlite / mysql / redis)
 
