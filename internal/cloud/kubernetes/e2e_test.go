@@ -243,8 +243,11 @@ func TestE2EGpiletAndRay(t *testing.T) {
 	// Run a REAL distributed Ray task and require it to execute on BOTH
 	// nodes. `ray status` + a raylet process only prove the cluster is up;
 	// scheduling a @ray.remote function exercises the driver, the scheduler,
-	// the object store and worker registration end to end. Retry a few times
-	// because a freshly-joined worker may not yet be schedulable.
+	// the object store and worker registration end to end. `ray.nodes()`
+	// prints each node's registered address/resources so a worker that
+	// registered under a wrong address is visible in the failure output.
+	// Retry a few times because a freshly-joined worker may not yet be
+	// schedulable.
 	taskScript := `cat > /tmp/ray_dist_task.py <<'PYEOF'
 import ray
 ray.init(address="` + headAddr + `")
@@ -256,10 +259,19 @@ def node_ip():
 
 addrs = ray.get([node_ip.remote() for _ in range(8)])
 print("NODE_IPS=" + ",".join(sorted(set(addrs))))
+
+alive = 0
+for n in ray.nodes():
+    res = n.get("Resources") or n.get("TotalResources") or {}
+    print("RAY_NODE alive=%s addr=%s cpu=%s" % (bool(n.get("Alive")), n.get("NodeManagerAddress") or n.get("NodeManagerHostname"), res.get("CPU")))
+    if n.get("Alive"):
+        alive += 1
+print("ALIVE_NODES=" + str(alive))
 PYEOF
 python /tmp/ray_dist_task.py`
 	var taskOut string
 	nodes := map[string]bool{}
+	alive := 0
 	for attempt := 1; attempt <= 4; attempt++ {
 		taskOut = execInPod(t, ctx, cs, headPod, taskScript)
 		nodes = map[string]bool{}
@@ -273,17 +285,26 @@ python /tmp/ray_dist_task.py`
 				}
 			}
 		}
-		if len(nodes) >= 2 {
+		alive = 0
+		if _, after, ok := strings.Cut(taskOut, "ALIVE_NODES="); ok {
+			if nl := strings.IndexByte(after, '\n'); nl >= 0 {
+				after = after[:nl]
+			}
+			alive, _ = strconv.Atoi(strings.TrimSpace(after))
+		}
+		if len(nodes) >= 2 && alive >= 2 {
 			break
 		}
-		t.Logf("distributed Ray task attempt %d: %d node(s) %v, retrying in 5s", attempt, len(nodes), nodes)
+		t.Logf("distributed Ray task attempt %d: %d node(s) %v, %d alive, retrying in 5s", attempt, len(nodes), nodes, alive)
 		time.Sleep(5 * time.Second)
 	}
-	if len(nodes) < 2 {
+	if len(nodes) < 2 || alive < 2 {
 		dumpPodDiagnostics(t, ctx, region, headPod)
-		t.Errorf("distributed Ray task did not execute on 2 nodes; got %d node(s) %v:\n%s", len(nodes), nodes, taskOut)
+		workerRayLog := execInPod(t, ctx, cs, insts[1].Name, "tail -n 40 /tmp/ray/session_latest/logs/raylet.out 2>/dev/null || echo 'no worker raylet log'")
+		t.Logf("worker raylet log:\n%s", workerRayLog)
+		t.Errorf("distributed Ray task did not run on 2 nodes (task nodes=%d %v, alive nodes=%d):\n%s", len(nodes), nodes, alive, taskOut)
 	} else {
-		t.Logf("distributed Ray task ran on %d nodes: %v", len(nodes), nodes)
+		t.Logf("distributed Ray task ran on %d nodes: %v (%d alive)", len(nodes), nodes, alive)
 	}
 
 	// gpilet must be running inside both pods (nohup background start, so
