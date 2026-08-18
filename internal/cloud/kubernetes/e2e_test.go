@@ -193,8 +193,31 @@ func TestE2EGpiletAndRay(t *testing.T) {
 		dumpPodDiagnostics(t, ctx, region, headPod)
 		t.Errorf("head ray status did not report the cluster:\n%s", rayStatus)
 	} else {
-		t.Logf("head ray status:\n%s", rayStatus)
+		n := 0
+		cpu := ""
+		for _, line := range strings.Split(rayStatus, "\n") {
+			if strings.Contains(line, "node_") {
+				n++
+			}
+			if strings.Contains(line, "CPU") {
+				cpu = strings.TrimSpace(line)
+			}
+		}
+		t.Logf("head ray status: %d node(s), %s", n, cpu)
 	}
+
+	// Per-node diagnostics (address + CPU) printed EARLY so a worker that
+	// registered under a wrong address or reports no CPU is visible even if
+	// the later distributed-task section of the CI log gets truncated.
+	nodeProbe := `cat > /tmp/ray_nodes.py <<'PYEOF'
+import ray
+ray.init(address="` + headAddr + `")
+for n in ray.nodes():
+    res = n.get("Resources") or n.get("TotalResources") or {}
+    print("RAY_NODE alive=%s addr=%s cpu=%s" % (bool(n.get("Alive")), n.get("NodeManagerAddress") or n.get("NodeManagerHostname"), res.get("CPU")))
+PYEOF
+python /tmp/ray_nodes.py`
+	t.Logf("ray node probe:\n%s", execInPod(t, ctx, cs, headPod, nodeProbe))
 
 	// A 2-node cluster means a raylet process is running in BOTH pods (head
 	// and worker), not just a healthy head. Poll each pod's raylet.
