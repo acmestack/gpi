@@ -183,18 +183,35 @@ func TestE2EGpiletAndRay(t *testing.T) {
 	}
 	headAddr := headPodObj.Status.PodIP + ":" + strconv.Itoa(rayHeadPort)
 	rayStatus := pollRayStatus(t, ctx, cs, headPod, headAddr, 120*time.Second)
-	if !strings.Contains(rayStatus, "Ray runtime is running") {
+	if !strings.Contains(rayStatus, "Autoscaler status") && !strings.Contains(rayStatus, "Node status") {
 		dumpPodDiagnostics(t, ctx, region, headPod)
 		t.Errorf("head ray status did not report a running runtime:\n%s", rayStatus)
 	}
-	if !strings.Contains(rayStatus, "2 nodes") && !strings.Contains(rayStatus, "1 active, 1 pending") {
+	if !strings.Contains(rayStatus, "Healthy") {
 		dumpPodDiagnostics(t, ctx, region, headPod)
 		dumpPodDiagnostics(t, ctx, region, insts[1].Name)
 		// The worker retries `ray start --address=...`; its stdout shows the
 		// join error. Log the last worker logs so the cause is actionable.
 		workerLog := execInPod(t, ctx, cs, insts[1].Name, "tail -n 30 /tmp/ray/session_latest/logs/worker_start.log 2>/dev/null || tail -n 30 /tmp/ray/session_latest/logs/raylet.out 2>/dev/null || echo 'no ray logs'")
 		t.Logf("worker ray join logs:\n%s", workerLog)
-		t.Errorf("head ray status does not show the worker joined:\n%s", rayStatus)
+		t.Errorf("head ray status does not show a healthy cluster:\n%s", rayStatus)
+	}
+
+	// A 2-node cluster means a raylet process is running in BOTH pods (head
+	// and worker), not just a healthy head. Poll each pod's raylet.
+	for _, pod := range []string{headPod, insts[1].Name} {
+		var rl string
+		rlDeadline := time.Now().Add(60 * time.Second)
+		for time.Now().Before(rlDeadline) {
+			rl = execInPod(t, ctx, cs, pod, "pgrep -f raylet")
+			if strings.TrimSpace(rl) != "" {
+				break
+			}
+			time.Sleep(2 * time.Second)
+		}
+		if strings.TrimSpace(rl) == "" {
+			t.Errorf("raylet process not found in pod %s (worker did not join the Ray cluster)", pod)
+		}
 	}
 
 	// gpilet must be running inside both pods (nohup background start, so
@@ -244,8 +261,9 @@ func pollRayStatus(t *testing.T, ctx context.Context, cs *kubernetes.Clientset, 
 	for time.Now().Before(deadline) {
 		out := execInPod(t, ctx, cs, podName, cmd)
 		last = out
-		if strings.Contains(out, "Ray runtime is running") &&
-			(strings.Contains(out, "2 nodes") || strings.Contains(out, "1 active, 1 pending")) {
+		// `ray status` prints an "Autoscaler status / Node status / Healthy"
+		// block; "Ray runtime is running" is only printed by ray start.
+		if strings.Contains(out, "Node status") && strings.Contains(out, "Healthy") {
 			return out
 		}
 		time.Sleep(2 * time.Second)
@@ -282,11 +300,12 @@ func execInPod(t *testing.T, ctx context.Context, cs *kubernetes.Clientset, podN
 	})
 	if err != nil {
 		// A non-zero exit (e.g. `ray status` before the runtime is up) is not
-		// a test failure by itself; callers decide what to assert on. Log the
-		// stderr so the cause is visible in CI output.
+		// a test failure by itself; callers decide what to assert on.
 		t.Logf("exec %s (%q) failed: %v; stderr: %s", podName, cmd, err, stderr.String())
 	}
-	return stdout.String()
+	// Merge stderr into the result so partial/missing output is visible to
+	// callers (and pollRayStatus diagnostics) instead of silently dropping it.
+	return strings.TrimSpace(stdout.String() + "\n" + stderr.String())
 }
 
 // restConfig returns the REST config for the current context (used by exec).

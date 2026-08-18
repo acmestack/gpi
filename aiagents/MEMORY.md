@@ -1,8 +1,10 @@
 # Gpi 项目沟通记录（MEMORY）
 
-- **文档版本**：v35（2026-08-17）
+- **文档版本**：v36（2026-08-17）
 - 本文件记录从项目立项至今的每一次沟通内容与决策，供后续对话快速恢复上下文。
 - 变更规则遵循项目根 `AGENTS.md`：docs 长期文档版本号记录在内容中，此处同理。
+- **v36（2026-08-17）**：e2e 真正根因找到——**断言词错误**。`ray status` 输出结构是 `Autoscaler status / Node status / Healthy: / Resources`，而**不是** "Ray runtime is running"（那是 `ray start`/`ray.init()` 的措辞）。之前 v34/v35 的 `pollRayStatus` 匹配 "Ray runtime is running" 永远 false → 120s 必然超时 → 断言空输出。修复：`pollRayStatus` 改为匹配 `Node status` + `Healthy`；head 断言改 `Autoscaler status`/`Node status`；2 节点验证改为**双 pod `pgrep -f raylet`**（head+worker 都有 raylet 进程，最直接证明集群成形，替代脆弱的 `ray.worker` 文本匹配）。`execInPod` 合并 stdout+stderr 进返回值。期间用户转述分析两度误判 `TestResolveGPUResourceKey`（本地 + `-count=5` 全 PASS，与该 e2e 失败无关）。
+- **v35（2026-08-17）**：e2e `TestE2EGpiletAndRay` 第三次修复——`pollRayStatus` 从 `--address=auto` 改为显式 `ray status --address=<headIP>:6379`（headIP 从 pod 直接 Get，绕开 current-cluster 文件依赖）；bootstrap 脚本加 `ulimit -n 65536`（Ray 容器官方前置，KubeRay 也强制注入，防 fd 耗尽）；worker join 失败回显 "worker join failed, retrying"；worker 未 join 断言失败时追加抓取 `/tmp/ray/session_latest/logs/` 诊断。
 - **v35（2026-08-17）**：e2e `TestE2EGpiletAndRay` 第三次修复——`pollRayStatus` 从 `--address=auto` 改为显式 `ray status --address=<headIP>:6379`（headIP 从 pod 直接 Get，绕开 current-cluster 文件依赖）；bootstrap 脚本加 `ulimit -n 65536`（Ray 容器官方前置，KubeRay 也强制注入，防 fd 耗尽）；worker join 失败回显 "worker join failed, retrying"；worker 未 join 断言失败时追加抓取 `/tmp/ray/session_latest/logs/` 诊断。注：期间用户转述的分析称 `TestResolveGPUResourceKey` 失败（误判，本地一直 PASS，`resolveGPUResourceKey` 已用 ToUpper 处理大小写，与该 e2e 失败无关）。
 - **v34（2026-08-17）**：e2e `TestE2EGpiletAndRay` 继续修复——head 日志显示 "Ray runtime started" 但 `ray status` 仍 exit 1，判定是**地址自动检测失败**（无参 `ray status` 在新 shell 里找不到集群地址）。改动：`execInPod` 分离 stdout/stderr，失败时输出 stderr；`pollRayStatus` 用 `ray status --address=auto`（读 `ray start` 写的 current-cluster 文件）；Ray/gpilet 断言失败时先 `dumpPodDiagnostics`（pod phase/事件/日志）再报错。
 - **v33（2026-08-17）**：e2e `TestE2EGpiletAndRay` 修复 Ray/gpilet 就绪时序——pod Running 不代表 Ray 已就绪（容器 start 时 `ray start` 还在初始化、worker join 需时间）。改动：`execInPod` 命令失败（如 `ray status` exit 1）不再 Fatal，改为 log + 返回输出；新增 `pollRayStatus`（120s 轮询 `ray status` 直到 "Ray runtime is running" + 2 节点）；gpilet pgrep 与 status.json 检查同样加 60s 轮询。worker join 用 `until ray start --address` 自愈重试、head 用 `--node-ip-address=$GPI_POD_IP` 绑定 PodIP（provider.go podStartupCommand 已确认正确）。
