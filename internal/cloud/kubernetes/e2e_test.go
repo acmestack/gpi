@@ -9,6 +9,7 @@ package kubernetes
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/acmestack/gpi/internal/cloud"
+	"github.com/acmestack/gpi/internal/gpilet"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -218,6 +220,50 @@ func TestE2EGpiletAndRay(t *testing.T) {
 		}
 	}
 
+	// Run a REAL distributed Ray task and require it to execute on BOTH
+	// nodes. `ray status` + a raylet process only prove the cluster is up;
+	// scheduling a @ray.remote function exercises the driver, the scheduler,
+	// the object store and worker registration end to end.
+	taskScript := `cat > /tmp/ray_dist_task.py <<'PYEOF'
+import ray
+ray.init(address="` + headAddr + `")
+
+@ray.remote
+def node_ip():
+    import ray.util
+    return ray.util.get_node_ip_address()
+
+addrs = ray.get([node_ip.remote() for _ in range(8)])
+print("NODE_IPS=" + ",".join(sorted(set(addrs))))
+PYEOF
+python /tmp/ray_dist_task.py`
+	var taskOut string
+	taskDeadline := time.Now().Add(90 * time.Second)
+	for time.Now().Before(taskDeadline) {
+		taskOut = execInPod(t, ctx, cs, headPod, taskScript)
+		if strings.Contains(taskOut, "NODE_IPS=") {
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+	nodes := map[string]bool{}
+	if _, after, ok := strings.Cut(taskOut, "NODE_IPS="); ok {
+		if nl := strings.IndexByte(after, '\n'); nl >= 0 {
+			after = after[:nl]
+		}
+		for _, ip := range strings.Split(after, ",") {
+			if ip = strings.TrimSpace(ip); ip != "" {
+				nodes[ip] = true
+			}
+		}
+	}
+	if len(nodes) < 2 {
+		dumpPodDiagnostics(t, ctx, region, headPod)
+		t.Errorf("distributed Ray task did not execute on 2 nodes; got %d node(s) %v:\n%s", len(nodes), nodes, taskOut)
+	} else {
+		t.Logf("distributed Ray task ran on %d nodes: %v", len(nodes), nodes)
+	}
+
 	// gpilet must be running inside both pods (nohup background start, so
 	// poll briefly in case it is still spawning).
 	pods := []string{headPod, insts[1].Name}
@@ -236,18 +282,44 @@ func TestE2EGpiletAndRay(t *testing.T) {
 		}
 	}
 
-	// gpilet must have written its status file (default interval 10s).
-	var statusOut string
-	statusDeadline := time.Now().Add(60 * time.Second)
-	for time.Now().Before(statusDeadline) {
-		statusOut = execInPod(t, ctx, cs, headPod, "test -f /var/lib/gpilet/status.json && cat /var/lib/gpilet/status.json")
-		if strings.TrimSpace(statusOut) != "" {
+	// gpilet must have written a VALID status file in both pods (default
+	// interval 10s). Parse it and verify the fields gpilet is responsible
+	// for collecting, so a silently-broken Collect() cannot pass.
+	for _, pod := range pods {
+		var st *gpilet.Status
+		statusDeadline := time.Now().Add(60 * time.Second)
+		for time.Now().Before(statusDeadline) {
+			statusOut := execInPod(t, ctx, cs, pod, "cat /var/lib/gpilet/status.json 2>/dev/null")
+			if strings.TrimSpace(statusOut) == "" {
+				time.Sleep(2 * time.Second)
+				continue
+			}
+			if err := json.Unmarshal([]byte(statusOut), &st); err != nil {
+				t.Errorf("gpilet status.json in pod %s is not valid JSON: %v\n%s", pod, err, statusOut)
+			}
 			break
 		}
-		time.Sleep(2 * time.Second)
-	}
-	if strings.TrimSpace(statusOut) == "" {
-		t.Errorf("gpilet status.json not found in pod %s", headPod)
+		if st == nil {
+			t.Errorf("gpilet status.json not found in pod %s", pod)
+			continue
+		}
+		t.Logf("gpilet status in pod %s: hostname=%q cpus=%d mem_total_gb=%.1f ray_running=%v collected_at=%v",
+			pod, st.Hostname, st.CPUs, st.MemTotalGB, st.RayRunning, st.CollectedAt)
+		if st.Hostname != pod {
+			t.Errorf("gpilet status in pod %s: hostname = %q, want %q", pod, st.Hostname, pod)
+		}
+		if st.CPUs < 1 {
+			t.Errorf("gpilet status in pod %s: cpus = %d, want >= 1", pod, st.CPUs)
+		}
+		if st.MemTotalGB <= 0 {
+			t.Errorf("gpilet status in pod %s: mem_total_gb = %v, want > 0", pod, st.MemTotalGB)
+		}
+		if !st.RayRunning {
+			t.Errorf("gpilet status in pod %s: ray_running = false, want true", pod)
+		}
+		if age := time.Since(st.CollectedAt); age > 30*time.Second {
+			t.Errorf("gpilet status in pod %s: collected_at %v is %v old, want fresh", pod, st.CollectedAt, age)
+		}
 	}
 }
 
