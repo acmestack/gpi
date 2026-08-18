@@ -265,6 +265,20 @@ func TestBuildPod_MultiNode(t *testing.T) {
 	if len(workerCmd) < 3 || !strings.Contains(workerCmd[2], "--address=$GPI_HEAD_ADDR:6379") {
 		t.Errorf("worker command = %v, want ray --address bootstrap", workerCmd)
 	}
+	if !strings.Contains(workerCmd[2], "--node-ip-address=$GPI_POD_IP") {
+		t.Errorf("worker command should pin node IP: %v", workerCmd)
+	}
+	workerPodIP := false
+	for _, env := range worker.Spec.Containers[0].Env {
+		if env.Name == envPodIP && env.ValueFrom != nil && env.ValueFrom.FieldRef != nil &&
+			env.ValueFrom.FieldRef.FieldPath == "status.podIP" {
+			workerPodIP = true
+			break
+		}
+	}
+	if !workerPodIP {
+		t.Errorf("worker should inject GPI_POD_IP via downward API")
+	}
 }
 
 func TestBuildPod_ConfigDrivenCommand(t *testing.T) {

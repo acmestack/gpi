@@ -276,8 +276,19 @@ func buildPod(p podParams) *corev1.Pod {
 	cpus, memGiB, gpuType, gpuCount := parseInstanceType(spec.InstanceType)
 
 	// Build environment variables
+	// Inject the pod IP via the downward API for BOTH roles so `ray start`
+	// can pin --node-ip-address to the pod IP. Without it Ray may pick a
+	// wrong interface (e.g. a bridge) inside a container; a worker that
+	// registers under the wrong address can never execute tasks and every
+	// task silently falls back to the head.
 	envVars := []corev1.EnvVar{
 		{Name: envRole, Value: role},
+		{
+			Name: envPodIP,
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.podIP"},
+			},
+		},
 	}
 	if gpuCount == 0 {
 		// Prevent GPU visibility when no GPU requested (isolation)
@@ -286,15 +297,7 @@ func buildPod(p podParams) *corev1.Pod {
 			Value: "none",
 		})
 	}
-	if role == "head" {
-		// Inject own pod IP so `ray start --head` binds the right address.
-		envVars = append(envVars, corev1.EnvVar{
-			Name: envPodIP,
-			ValueFrom: &corev1.EnvVarSource{
-				FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.podIP"},
-			},
-		})
-	} else if headAddr != "" {
+	if role != "head" && headAddr != "" {
 		// Workers join the head's Ray cluster.
 		envVars = append(envVars, corev1.EnvVar{Name: envHeadAddr, Value: headAddr})
 	}
@@ -395,9 +398,10 @@ func podStartupCommand(cfg *Config, role string) []string {
 	} else {
 		// The worker retries until the head's GCS is reachable (Ray needs a
 		// moment after the head pod starts). KubeRay uses the same pattern
-		// with an init container + `ray health-check`.
+		// with an init container + `ray health-check`. --node-ip-address pins
+		// the node to the pod IP so tasks can actually be scheduled to it.
 		rayStart = "until ray start --address=$GPI_HEAD_ADDR:" + strconv.Itoa(headPort) +
-			" --disable-usage-stats; do echo \"worker join failed, retrying\"; sleep 2; done"
+			" --node-ip-address=$GPI_POD_IP --disable-usage-stats; do echo \"worker join failed, retrying\"; sleep 2; done"
 	}
 
 	script := "set -e\n" +
