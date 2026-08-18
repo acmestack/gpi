@@ -193,17 +193,19 @@ func TestE2EGpiletAndRay(t *testing.T) {
 		dumpPodDiagnostics(t, ctx, region, headPod)
 		t.Errorf("head ray status did not report the cluster:\n%s", rayStatus)
 	} else {
-		n := 0
+		ids := map[string]bool{}
 		cpu := ""
 		for _, line := range strings.Split(rayStatus, "\n") {
-			if strings.Contains(line, "node_") {
-				n++
+			for _, f := range strings.Fields(line) {
+				if strings.HasPrefix(f, "node_") {
+					ids[f] = true
+				}
 			}
 			if strings.Contains(line, "CPU") {
 				cpu = strings.TrimSpace(line)
 			}
 		}
-		t.Logf("head ray status: %d node(s), %s", n, cpu)
+		t.Logf("head ray status: %d node(s), %s", len(ids), cpu)
 	}
 
 	// Per-node diagnostics (address + CPU) printed EARLY so a worker that
@@ -270,12 +272,16 @@ python /tmp/ray_nodes.py`
 	// prints each node's registered address/resources so a worker that
 	// registered under a wrong address is visible in the failure output.
 	// Retry a few times because a freshly-joined worker may not yet be
-	// schedulable.
+	// schedulable. The remote task MUST be marked SPREAD: Ray's default
+	// scheduler PACKs CPU-only tasks onto a single node (observed: all 8
+	// tasks landing on head, then all 8 on worker across attempts), so
+	// without an explicit strategy the "ran on 2 nodes" assertion can never
+	// pass even with a perfectly healthy cluster.
 	taskScript := `cat > /tmp/ray_dist_task.py <<'PYEOF'
 import ray
 ray.init(address="` + headAddr + `")
 
-@ray.remote
+@ray.remote(scheduling_strategy="SPREAD")
 def node_ip():
     import ray.util
     return ray.util.get_node_ip_address()
